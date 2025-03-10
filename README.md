@@ -7,6 +7,7 @@ A modern, object-oriented PHP library for parsing ONIX (ONline Information eXcha
 - Full support for ONIX 3.0 XML
 - Handles both namespaced and non-namespaced XML
 - Comprehensive subject classification support (CLIL, THEMA, ScoLOMFR)
+- Support for product images and other media resources
 - Modular, object-oriented design
 - Comprehensive logging
 - Configurable and extensible
@@ -47,6 +48,7 @@ onix-parser/
 │   ├── OnixParser.php
 │   └── Model/
 │       ├── Header.php
+│       ├── Image.php
 │       ├── Onix.php
 │       ├── Price.php
 │       ├── Product.php
@@ -107,6 +109,12 @@ try {
             echo "Status: Not available\n";
         }
         
+        // Get cover images
+        if ($coverImage = $product->getPrimaryCoverImage()) {
+            echo "Cover Image: " . $coverImage->getUrl() . "\n";
+            echo "Image HTML: " . $coverImage->getImageTag(['alt' => 'Cover image', 'class' => 'book-cover']) . "\n";
+        }
+        
         echo "\n";
     }
     
@@ -145,6 +153,54 @@ $mainSubject = $product->getMainSubject();
 // Check if product has a specific subject code
 if ($product->hasSubjectCode('3455', '29')) {
     echo "This is a psychological thriller!";
+}
+```
+
+## Working with Images
+
+The ONIX Parser supports extracting images and other media resources from ONIX files:
+
+```php
+// Get all images for a product
+$images = $product->getImages();
+
+// Get just the cover images
+$coverImages = $product->getCoverImages();
+
+// Get the primary cover image
+$coverImage = $product->getPrimaryCoverImage();
+
+// Get sample content
+$sampleContent = $product->getSampleContent();
+
+// Get images of a specific type
+$contributorImages = $product->getImagesByType('04'); // Contributor pictures
+
+// Generate an HTML image tag
+if ($coverImage) {
+    $imgTag = $coverImage->getImageTag([
+        'alt' => 'Book cover for ' . $product->getTitle()->getText(),
+        'class' => 'book-cover',
+        'width' => '300'
+    ]);
+    echo $imgTag; // Outputs: <img src="http://example.com/cover.jpg" alt="Book cover for Book Title" class="book-cover" width="300">
+}
+
+// Check image type
+if ($image->isCoverImage()) {
+    echo "This is a cover image";
+}
+
+if ($image->isImage()) {
+    echo "This is an image (not video or audio)";
+}
+
+// Get file extension
+$extension = $image->getFileExtension(); // Returns 'jpg', 'png', etc.
+
+// Validate URL
+if ($image->hasValidUrl()) {
+    echo "The image URL is valid";
 }
 ```
 
@@ -192,6 +248,11 @@ $clilSubjects = $product->getClilSubjects();
 $themaSubjects = $product->getThemaSubjects();
 $scoLOMFRSubjects = $product->getScoLOMFRSubjects();
 $mainSubject = $product->getMainSubject();
+
+// Image information
+$allImages = $product->getImages();
+$coverImages = $product->getCoverImages();
+$primaryCover = $product->getPrimaryCoverImage();
 
 // Availability
 $isAvailable = $product->isAvailable();
