@@ -1,0 +1,70 @@
+# Composer
+/vendor/
+/composer.lock
+
+# PHP
+/.phpunit.cache/
+/.phpunit.result.cache
+/phpunit.xml
+
+# IDE and editor files
+/.idea/
+/.vscode/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+/.project
+/.settings
+/.buildpath
+/.netbeans/
+/nbproject/
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Logs
+/logs/
+*.log
+
+# Cache directories
+/cache/
+/temp/
+
+# Environment files
+/.env
+/.env.local
+/.env.*.local
+
+# Build directories
+/build/
+/dist/
+
+# scripts fileq
+/scripts/
+/classification/
+
+# Large data files
+/data/*.csv
+/data/*.xlsx
+/data/*.xls
+
+
+# Ignore all .json files in data directory
+/data/*.json
+
+# But track these specific JSON files
+!/data/clil_codes.json
+!/data/thema_codes.json
+
+# Test files
+/tests/fixtures/large-samples/
+
+# Backup files
+*~
+*.bak
+*.swp
+*.tmp
