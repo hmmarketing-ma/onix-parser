@@ -327,6 +327,9 @@ class OnixParser
 
         // Parse title subjects
         $this->parseSubjects($productNode, $product);
+
+        // Parse images and resources
+        $this->parseImages($productNode, $product);
         
         // Parse supply details (availability, prices)
         $this->parseSupply($productNode, $product);
@@ -544,6 +547,70 @@ class OnixParser
         }
         
         return null;
+    }
+
+
+    /**
+     * Parse images and resources
+     *
+     * @param \DOMNode $productNode
+     * @param Product $product
+     */
+    private function parseImages(\DOMNode $productNode, Product $product): void
+    {
+        // Get image nodes
+        $imageNodes = $this->queryNodes($this->fieldMappings['images']['nodes'], $productNode);
+        
+        foreach ($imageNodes as $imageNode) {
+            try {
+                $image = new \ONIXParser\Model\Image();
+                
+                // Get content type
+                $contentType = $this->getNodeValue($this->fieldMappings['images']['content_type'], $imageNode);
+                if ($contentType) {
+                    $image->setContentType($contentType);
+                    
+                    // Set content type name using code map
+                    if (isset($this->codeMaps['resource_content_type'][$contentType])) {
+                        $image->setContentTypeName($this->codeMaps['resource_content_type'][$contentType]);
+                    }
+                }
+                
+                // Get resource mode
+                $mode = $this->getNodeValue($this->fieldMappings['images']['mode'], $imageNode);
+                if ($mode) {
+                    $image->setMode($mode);
+                    
+                    // Set mode name using code map
+                    if (isset($this->codeMaps['resource_mode'][$mode])) {
+                        $image->setModeName($this->codeMaps['resource_mode'][$mode]);
+                    }
+                }
+                
+                // Get URL
+                $url = $this->getNodeValue($this->fieldMappings['images']['url'], $imageNode);
+                if ($url) {
+                    $image->setUrl($url);
+                    
+                    // Only add images with valid URLs
+                    if ($image->hasValidUrl()) {
+                        $product->addImage($image);
+                        
+                        $this->logger->debug(
+                            "Added image: " . 
+                            ($image->getContentTypeName() ?: $image->getContentType()) . 
+                            " - " . ($image->getModeName() ?: $image->getMode()) . 
+                            " - " . $image->getUrl()
+                        );
+                    } else {
+                        $this->logger->warning("Skipped image with invalid URL: " . $url);
+                    }
+                }
+                
+            } catch (\Exception $e) {
+                $this->logger->warning("Error parsing image: " . $e->getMessage());
+            }
+        }
     }
 
     /**
