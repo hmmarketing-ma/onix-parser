@@ -62,7 +62,12 @@ class Product
     /**
      * @var array<Subject> ScoLOMFR subjects
      */
-    private $scoLOMFRSubjects = [];  
+    private $scoLOMFRSubjects = [];
+
+    /**
+     * @var array<Image> Images and resources associated with the product
+     */
+    private $images = [];
     
     /**
      * @var string Supplier name
@@ -517,5 +522,76 @@ public function addSubject(Subject $subject)
         }
         
         return false;
+    }
+
+
+    /**
+     * Get all images
+     * 
+     * @return array<Image>
+     */
+    public function getImages()
+    {
+        return $this->images;
+    }
+    
+    /**
+     * Add an image
+     * 
+     * @param Image $image
+     * @return self
+     */
+    public function addImage(Image $image)
+    {
+        $this->images[] = $image;
+        return $this;
+    }
+    
+    /**
+     * Get cover images only
+     * 
+     * @return array<Image>
+     */
+    public function getCoverImages()
+    {
+        return array_filter($this->images, function($image) {
+            return $image->isCoverImage();
+        });
+    }
+    
+    /**
+     * Get primary cover image
+     * 
+     * @return Image|null
+     */
+    public function getPrimaryCoverImage()
+    {
+        $coverImages = $this->getCoverImages();
+        return !empty($coverImages) ? reset($coverImages) : null;
+    }
+    
+    /**
+     * Get sample content images/resources
+     * 
+     * @return array<Image>
+     */
+    public function getSampleContent()
+    {
+        return array_filter($this->images, function($image) {
+            return $image->isSampleContent();
+        });
+    }
+    
+    /**
+     * Get images by type
+     * 
+     * @param string $contentType Content type code
+     * @return array<Image>
+     */
+    public function getImagesByType($contentType)
+    {
+        return array_filter($this->images, function($image) use ($contentType) {
+            return $image->getContentType() === $contentType;
+        });
     }
 }

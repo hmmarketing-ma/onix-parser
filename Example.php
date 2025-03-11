@@ -136,6 +136,62 @@ try {
         } else {
             echo "\nNo price information available\n";
         }
+
+
+        // Display images
+
+        // Image information
+        $images = $product->getImages();
+        echo "Total images: " . count($images) . "\n";
+        
+        // Cover images
+        $coverImages = $product->getCoverImages();
+        echo "Cover images: " . count($coverImages) . "\n";
+        
+        if ($coverImage = $product->getPrimaryCoverImage()) {
+            echo "Primary cover URL: " . $coverImage->getUrl() . "\n";
+            
+            // Generate HTML image tag
+            $imgTag = $coverImage->getImageTag([
+                'alt' => 'Cover for ' . $product->getTitle()->getText(),
+                'class' => 'book-cover',
+                'width' => '300'
+            ]);
+            
+            echo "HTML image tag: " . htmlspecialchars($imgTag) . "\n";
+            
+            // Get file extension
+            echo "File extension: " . $coverImage->getFileExtension() . "\n";
+        }
+        
+        // Sample content
+        $sampleContent = $product->getSampleContent();
+        echo "Sample content resources: " . count($sampleContent) . "\n";
+        
+        foreach ($sampleContent as $j => $sample) {
+            echo "  Sample " . ($j + 1) . ": " . $sample->getUrl() . "\n";
+            
+            if ($sample->isImage()) {
+                echo "  Type: Image\n";
+            } elseif ($sample->isVideo()) {
+                echo "  Type: Video\n";
+            } elseif ($sample->isAudio()) {
+                echo "  Type: Audio\n";
+            } else {
+                echo "  Type: Other (" . $sample->getMode() . ")\n";
+            }
+        }
+        
+        // All images with details
+        echo "\nAll Resources:\n";
+        foreach ($product->getImages() as $k => $image) {
+            echo "  Resource " . ($k + 1) . ":\n";
+            echo "    Content Type: " . $image->getContentType() . 
+                 " (" . $image->getContentTypeName() . ")\n";
+            echo "    Mode: " . $image->getMode() . 
+                 " (" . $image->getModeName() . ")\n";
+            echo "    URL: " . $image->getUrl() . "\n";
+        }
         
         echo "-------------------------------\n";
     }
