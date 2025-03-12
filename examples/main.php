@@ -1,12 +1,12 @@
 <?php
 
-require_once __DIR__ . '/vendor/autoload.php';
+require_once 'vendor/autoload.php';
 
 use ONIXParser\OnixParser;
 use ONIXParser\Logger;
 
 // Set the path to the ONIX file
-$onixFilePath = __DIR__ . '/tests/fixtures/onix_samples/demo.xml';
+$onixFilePath =  'tests/fixtures/onix_samples/Sample_ONIX_3.0.xml';
 
 // Create a logger with DEBUG level to see all messages
 $logger = new Logger(Logger::DEBUG);
