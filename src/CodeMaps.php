@@ -223,6 +223,31 @@ class CodeMaps
             '24' => 'Description for retailers',
         ];
     }
+
+    /**
+     * Get text format codes (List 34)
+     * 
+     * @return array
+     */
+    public static function getTextFormatMap(): array
+    {
+        return [
+            '00' => 'ASCII text',
+            '01' => 'SGML',
+            '02' => 'HTML',
+            '03' => 'XML',
+            '04' => 'PDF',
+            '05' => 'XHTML',
+            '06' => 'Default text format',
+            '07' => 'Basic ASCII text',
+            '08' => 'PDF',
+            '09' => 'Microsoft Word',
+            '10' => 'Text',
+            '11' => 'Web-ready',
+            '12' => 'Microsoft Excel',
+            '13' => 'Markdown'
+        ];
+    }
     
     /**
      * Get publishing date role codes (List 163)
@@ -262,6 +287,7 @@ class CodeMaps
             'availability_code' => self::getAvailabilityCodeMap(),
             'contributor_role' => self::getContributorRoleMap(),
             'text_type' => self::getTextTypeMap(),
+            'text_format' => self::getTextFormatMap(),
             'publishing_date_role' => self::getPublishingDateRoleMap(),
             // List 30: Resource content type
             'resource_content_type' => [

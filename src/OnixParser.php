@@ -328,6 +328,9 @@ class OnixParser
         // Parse title subjects
         $this->parseSubjects($productNode, $product);
 
+        // Parse descriptions
+        $this->parseDescriptions($productNode, $product);
+
         // Parse images and resources
         $this->parseImages($productNode, $product);
         
@@ -549,6 +552,64 @@ class OnixParser
         return null;
     }
 
+
+    /**
+     * Parse descriptions
+     *
+     * @param \DOMNode $productNode
+     * @param Product $product
+     */
+    private function parseDescriptions(\DOMNode $productNode, Product $product): void
+    {
+        // Get text content nodes
+        $textNodes = $this->queryNodes($this->fieldMappings['description']['text_nodes'], $productNode);
+        
+        foreach ($textNodes as $textNode) {
+            try {
+                $description = new \ONIXParser\Model\Description();
+                
+                // Get text type
+                $textType = $this->getNodeValue($this->fieldMappings['description']['text_type'], $textNode);
+                if ($textType) {
+                    $description->setType($textType);
+                    
+                    // Set type name using code map
+                    if (isset($this->codeMaps['text_type'][$textType])) {
+                        $description->setTypeName($this->codeMaps['text_type'][$textType]);
+                    }
+                }
+                
+                // Get text format
+                $textFormat = $this->getNodeValue($this->fieldMappings['description']['text_format'], $textNode);
+                if ($textFormat) {
+                    $description->setFormat($textFormat);
+                    
+                    // Set format name using code map if available
+                    if (isset($this->codeMaps['text_format'][$textFormat])) {
+                        $description->setFormatName($this->codeMaps['text_format'][$textFormat]);
+                    }
+                }
+                
+                // Get text content
+                $textContent = $this->getNodeValue($this->fieldMappings['description']['text_content'], $textNode);
+                if ($textContent) {
+                    $description->setContent($textContent);
+                    
+                    // Only add descriptions with content
+                    $product->addDescription($description);
+                    
+                    $this->logger->debug(
+                        "Added description: " . 
+                        ($description->getTypeName() ?: $description->getType()) . 
+                        " - " . ($description->getFormatName() ?: $description->getFormat())
+                    );
+                }
+                
+            } catch (\Exception $e) {
+                $this->logger->warning("Error parsing description: " . $e->getMessage());
+            }
+        }
+    }
 
     /**
      * Parse images and resources
