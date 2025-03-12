@@ -261,6 +261,45 @@ $availabilityCode = $product->getAvailabilityCode();
 // Prices
 $defaultPrice = $product->getDefaultPrice();
 $allPrices = $product->getPrices();
+
+// Get all descriptions for a product
+$descriptions = $product->getDescriptions();
+
+// Get specific types of descriptions
+$mainDescription = $product->getMainDescription();
+$shortDescription = $product->getShortDescription();
+$longDescription = $product->getLongDescription();
+$tableOfContents = $product->getTableOfContents();
+$reviewQuotes = $product->getReviewQuotes();
+
+// Get descriptions by type code
+$featuresDescriptions = $product->getDescriptionsByType('11'); // Features
+
+// Check if a product has a specific description type
+if ($product->hasDescriptionType('03')) {
+    echo "This product has a long description";
+}
+
+// Working with a description object
+$description = $product->getMainDescription();
+if ($description) {
+    // Get the raw content (which may include HTML)
+    $content = $description->getContent();
+    
+    // Get plain text (with HTML stripped if necessary)
+    $plainText = $description->getPlainText();
+    
+    // Get a short excerpt (useful for search results or listings)
+    $excerpt = $description->getExcerpt(150, '...');
+    
+    // Check if description is in HTML format
+    if ($description->isHtml()) {
+        echo "Description contains HTML formatting";
+    }
+    
+    // Convert to string (same as getPlainText())
+    echo $description; // Implicitly calls __toString()
+}
 ```
 
 ### Accessing Original XML
