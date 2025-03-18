@@ -73,6 +73,11 @@ class Product
      * @var array<Image> Images and resources associated with the product
      */
     private $images = [];
+
+    /**
+     * @var array<Collection> Collections associated with the product
+     */
+    private $collections = [];
     
     /**
      * @var string Supplier name
@@ -722,4 +727,102 @@ class Product
                 return $image->getContentType() === $contentType;
             });
         }
+
+        /**
+         * Get all collections
+         * 
+         * @return array<Collection>
+         */
+        public function getCollections()
+        {
+            return $this->collections;
+        }
+
+        /**
+         * Add a collection
+         * 
+         * @param Collection $collection
+         * @return self
+         */
+        public function addCollection(Collection $collection)
+        {
+            $this->collections[] = $collection;
+            return $this;
+        }
+
+        /**
+         * Get series collections only
+         * 
+         * @return array<Collection>
+         */
+        public function getSeries()
+        {
+            return array_filter($this->collections, function($collection) {
+                return $collection->isSeries();
+            });
+        }
+
+        /**
+         * Get regular collections only (not series)
+         * 
+         * @return array<Collection>
+         */
+        public function getRegularCollections()
+        {
+            return array_filter($this->collections, function($collection) {
+                return $collection->isCollection();
+            });
+        }
+
+        /**
+         * Check if product is part of a series
+         * 
+         * @return bool
+         */
+        public function isPartOfSeries()
+        {
+            foreach ($this->collections as $collection) {
+                if ($collection->isSeries()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Check if product is part of a collection
+         * 
+         * @return bool
+         */
+        public function isPartOfCollection()
+        {
+            foreach ($this->collections as $collection) {
+                if ($collection->isCollection()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Get primary series (usually the first one)
+         * 
+         * @return Collection|null
+         */
+        public function getPrimarySeries()
+        {
+            $series = $this->getSeries();
+            return !empty($series) ? reset($series) : null;
+        }
+
+        /**
+         * Get primary collection (usually the first one)
+         * 
+         * @return Collection|null
+         */
+        public function getPrimaryCollection()
+        {
+            $collections = $this->getRegularCollections();
+            return !empty($collections) ? reset($collections) : null;
+}
 }

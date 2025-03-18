@@ -273,6 +273,20 @@ class CodeMaps
             '27' => 'Preorder embargo date',
         ];
     }
+
+    /**
+     * Collection type map (List 148)
+     * 
+     * @return array
+     */
+    public static function getCollectionTypeMap(): array
+    {
+        return [
+            '10' => 'Series',
+            '11' => 'Collection',
+            '20' => 'Subseries'
+        ];
+    }
     
     /**
      * Get all code maps
@@ -289,6 +303,7 @@ class CodeMaps
             'text_type' => self::getTextTypeMap(),
             'text_format' => self::getTextFormatMap(),
             'publishing_date_role' => self::getPublishingDateRoleMap(),
+            'collection_type' => self::getCollectionTypeMap(),
             // List 30: Resource content type
             'resource_content_type' => [
                 '01' => 'Front cover',

@@ -333,6 +333,9 @@ class OnixParser
 
         // Parse images and resources
         $this->parseImages($productNode, $product);
+
+        // Parse collections
+        $this->parseCollections($productNode, $product);
         
         // Parse supply details (availability, prices)
         $this->parseSupply($productNode, $product);
@@ -670,6 +673,94 @@ class OnixParser
                 
             } catch (\Exception $e) {
                 $this->logger->warning("Error parsing image: " . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Parse collections
+     *
+     * @param \DOMNode $productNode
+     * @param Product $product
+     */
+    private function parseCollections(\DOMNode $productNode, Product $product): void
+    {
+        // First check if there's a NoCollection flag
+        $noCollection = $this->queryNode($this->fieldMappings['no_collection'], $productNode);
+        if ($noCollection) {
+            $this->logger->debug("Product explicitly has no collections");
+            return;
+        }
+
+        // Get collection nodes
+        $collectionNodes = $this->queryNodes($this->fieldMappings['collections']['nodes'], $productNode);
+        
+        foreach ($collectionNodes as $collectionNode) {
+            try {
+                $collection = new \ONIXParser\Model\Collection();
+                
+                // Get collection type
+                $type = $this->getNodeValue($this->fieldMappings['collections']['type'], $collectionNode);
+                if ($type) {
+                    $collection->setType($type);
+                    
+                    // Set type name using code map if available
+                    if (isset($this->codeMaps['collection_type'][$type])) {
+                        $collection->setTypeName($this->codeMaps['collection_type'][$type]);
+                    }
+                }
+                
+                // Process title detail nodes
+                $titleDetailNodes = $this->queryNodes($this->fieldMappings['collections']['title_details'], $collectionNode);
+                $hasPrimaryTitle = false;
+                
+                foreach ($titleDetailNodes as $titleDetailNode) {
+                    // Get title type
+                    $titleType = $this->getNodeValue($this->fieldMappings['collections']['title_type'], $titleDetailNode);
+                    
+                    // Process title elements
+                    $titleElementNodes = $this->queryNodes($this->fieldMappings['collections']['title_elements'], $titleDetailNode);
+                    
+                    foreach ($titleElementNodes as $titleElementNode) {
+                        // Get title level
+                        $titleLevel = $this->getNodeValue($this->fieldMappings['collections']['title_level'], $titleElementNode);
+                        
+                        // Get title text
+                        $titleText = $this->getNodeValue($this->fieldMappings['collections']['title_text'], $titleElementNode);
+                        
+                        if ($titleText) {
+                            // If this is the preferred title (type 01, level 02), set it as the main title
+                            if ($titleType === '01' && $titleLevel === '02' && !$hasPrimaryTitle) {
+                                $collection->setTitleText($titleText);
+                                $hasPrimaryTitle = true;
+                            } else {
+                                // Otherwise, store as additional title
+                                $collection->addAdditionalTitle($titleType, $titleLevel, $titleText);
+                            }
+                        }
+                        
+                        // Get part number if available
+                        $partNumber = $this->getNodeValue($this->fieldMappings['collections']['part_number'], $titleElementNode);
+                        if ($partNumber) {
+                            $collection->setPartNumber($partNumber);
+                        }
+                    }
+                }
+                
+                // Only add collections with a title
+                if ($collection->getTitleText()) {
+                    $product->addCollection($collection);
+                    
+                    $this->logger->debug(
+                        "Added collection: " . 
+                        ($collection->getTypeName() ?: $collection->getType()) . 
+                        " - " . $collection->getTitleText() .
+                        ($collection->getPartNumber() ? " (Part " . $collection->getPartNumber() . ")" : "")
+                    );
+                }
+                
+            } catch (\Exception $e) {
+                $this->logger->warning("Error parsing collection: " . $e->getMessage());
             }
         }
     }

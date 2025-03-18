@@ -204,6 +204,77 @@ if ($image->hasValidUrl()) {
 }
 ```
 
+## Working with Collections and Series
+
+The ONIX Parser supports extracting collection and series information from ONIX files, including complex collection structures with multiple titles and levels:
+
+```php
+// Check if a product is part of a series or collection
+if ($product->isPartOfSeries()) {
+    echo "This product is part of a series";
+}
+
+if ($product->isPartOfCollection()) {
+    echo "This product is part of a collection";
+}
+
+// Get all collections and series
+$collections = $product->getCollections();
+
+// Get only series
+$series = $product->getSeries();
+
+// Get only regular collections
+$regularCollections = $product->getRegularCollections();
+
+// Get primary series
+$primarySeries = $product->getPrimarySeries();
+if ($primarySeries) {
+    echo "Series: " . $primarySeries->getDisplayName();
+    echo "Series Title: " . $primarySeries->getTitleText();
+    echo "Part Number: " . $primarySeries->getPartNumber();
+}
+
+// Working with a collection object
+$collection = $product->getCollections()[0];
+if ($collection) {
+    // Get collection type
+    if ($collection->isSeries()) {
+        echo "This is a series";
+    } elseif ($collection->isCollection()) {
+        echo "This is a regular collection";
+    }
+    
+    // Get collection title
+    echo "Title: " . $collection->getTitleText();
+    
+    // Get part number within the collection
+    echo "Part: " . $collection->getPartNumber();
+    
+    // Get formatted display name (includes part number if available)
+    echo "Display Name: " . $collection->getDisplayName();
+    
+    // Working with additional titles
+    $additionalTitles = $collection->getAdditionalTitles();
+    foreach ($additionalTitles as $type => $levelTitles) {
+        foreach ($levelTitles as $level => $text) {
+            echo "Title (Type $type, Level $level): $text";
+        }
+    }
+    
+    // Get titles of a specific type (e.g., abbreviated titles - type 05)
+    $abbreviatedTitles = $collection->getTitlesByType('05');
+    if ($abbreviatedTitles) {
+        foreach ($abbreviatedTitles as $level => $text) {
+            echo "Abbreviated title (Level $level): $text";
+        }
+    }
+    
+    // Convert to string (same as getDisplayName())
+    echo $collection; // Implicitly calls __toString()
+}
+```
+
 ## Configuration
 
 ### Logging
