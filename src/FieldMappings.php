@@ -91,8 +91,12 @@ class FieldMappings
             'collections' => [
                 'nodes' => ['./onix:DescriptiveDetail/onix:Collection', './DescriptiveDetail/Collection'],
                 'type' => ['./onix:CollectionType', './CollectionType'],
-                'title_text' => ['./onix:TitleDetail/onix:TitleElement/onix:TitleText', './TitleDetail/TitleElement/TitleText'],
-                'part_number' => ['./onix:TitleDetail/onix:TitleElement/onix:PartNumber', './TitleDetail/TitleElement/PartNumber'],
+                'title_details' => ['./onix:TitleDetail', './TitleDetail'],
+                'title_type' => ['./onix:TitleType', './TitleType'],
+                'title_elements' => ['./onix:TitleElement', './TitleElement'],
+                'title_level' => ['./onix:TitleElementLevel', './TitleElementLevel'],
+                'title_text' => ['./onix:TitleText', './TitleText'],
+                'part_number' => ['./onix:PartNumber', './PartNumber'],
             ],
             'no_collection' => ['./onix:DescriptiveDetail/onix:NoCollection', './DescriptiveDetail/NoCollection'],
             
