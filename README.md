@@ -23,7 +23,7 @@ A modern, object-oriented PHP library for parsing ONIX (ONline Information eXcha
 ## Installation
 
 ```bash
-composer require your-vendor/onix-parser
+composer require hm-marketing/onix-parser
 ```
 
 Or clone the repository and install dependencies:
