@@ -195,6 +195,7 @@ class FieldMappings
                 'price_amount' => ['./onix:PriceAmount', './PriceAmount'],
                 'currency_code' => ['./onix:CurrencyCode', './CurrencyCode'],
                 'tax_type' => ['./onix:Tax/onix:TaxType', './Tax/TaxType'],
+                'tax_rate_code' => ['./onix:Tax/onix:TaxRateCode', './Tax/TaxRateCode'],
                 'tax_rate_percent' => ['./onix:Tax/onix:TaxRatePercent', './Tax/TaxRatePercent'],
                 'unpriced_item_type' => ['./onix:UnpricedItemType', './UnpricedItemType'],
             ],

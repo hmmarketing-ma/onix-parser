@@ -6,10 +6,10 @@ use ONIXParser\OnixParser;
 use ONIXParser\Logger;
 
 // Set the path to the ONIX file
-$onixFilePath =  'tests/fixtures/onix_samples/Sample_ONIX_3.0.xml';
+$onixFilePath =  'tests/fixtures/onix_samples/451044545.xml';
 
 // Create a logger with DEBUG level to see all messages
-$logger = new Logger(Logger::DEBUG);
+$logger = new Logger(Logger::INFO, 'onix_parser.log');
 
 echo "ONIX Parser Example\n";
 echo "==================\n\n";
