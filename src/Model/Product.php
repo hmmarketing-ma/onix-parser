@@ -43,6 +43,21 @@ class Product
      * @var Title Title information
      */
     private $title;
+
+    /**
+     * @var string Global Location Number (GLN) of the supplier
+     */
+    private $supplierGLN;
+
+    /**
+     * @var string Product form code
+     */
+    private $productForm;
+
+    /**
+     * @var string Product form name
+     */
+    private $productFormName;
     
     /**
      * @var array<Subject> Subjects associated with the product
@@ -824,5 +839,83 @@ class Product
         {
             $collections = $this->getRegularCollections();
             return !empty($collections) ? reset($collections) : null;
-}
+        }
+
+
+    /**
+     * Get supplier GLN
+     * 
+     * @return string|null
+     */
+    public function getSupplierGLN()
+    {
+        return $this->supplierGLN;
+    }
+
+    /**
+     * Set supplier GLN
+     * 
+     * @param string $supplierGLN
+     * @return self
+     */
+    public function setSupplierGLN($supplierGLN)
+    {
+        $this->supplierGLN = $supplierGLN;
+        return $this;
+    }
+
+    /**
+     * Get product form code
+     * 
+     * @return string|null
+     */
+    public function getProductForm()
+    {
+        return $this->productForm;
+    }
+
+    /**
+     * Set product form code
+     * 
+     * @param string $productForm
+     * @return self
+     */
+    public function setProductForm($productForm)
+    {
+        $this->productForm = $productForm;
+        return $this;
+    }
+
+    /**
+     * Get product form name
+     * 
+     * @return string|null
+     */
+    public function getProductFormName()
+    {
+        return $this->productFormName;
+    }
+
+    /**
+     * Set product form name
+     * 
+     * @param string $productFormName
+     * @return self
+     */
+    public function setProductFormName($productFormName)
+    {
+        $this->productFormName = $productFormName;
+        return $this;
+    }
+
+    /**
+     * Check if product is a book
+     * 
+     * @return bool
+     */
+    public function isBook()
+    {
+        // Book forms typically start with 'B'
+        return $this->productForm && (substr($this->productForm, 0, 1) === 'B' || $this->productForm === '00');
+    }
 }

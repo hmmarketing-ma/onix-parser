@@ -173,6 +173,7 @@ class FieldMappings
                 'supply_details' => ['./onix:ProductSupply/onix:SupplyDetail', './ProductSupply/SupplyDetail'],
                 'supplier_name' => ['./onix:Supplier/onix:SupplierName', './Supplier/SupplierName'],
                 'supplier_role' => ['./onix:Supplier/onix:SupplierRole', './Supplier/SupplierRole'],
+                'gln' => ['./onix:Supplier/onix:SupplierIdentifier[onix:SupplierIDType="06"]/onix:IDValue', './Supplier/SupplierIdentifier[SupplierIDType="06"]/IDValue'],
             ],
             
             // Product availability

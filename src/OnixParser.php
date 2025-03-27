@@ -766,6 +766,26 @@ class OnixParser
     }
 
     /**
+     * Parse product form
+     *
+     * @param \DOMNode $productNode
+     * @param Product $product
+     */
+    private function parseProductForm(\DOMNode $productNode, Product $product): void
+    {
+        $formCode = $this->getNodeValue($this->fieldMappings['product_form']['form_code'], $productNode);
+        
+        if ($formCode) {
+            $product->setProductForm($formCode);
+            
+            // Set product form name using code map
+            if (isset($this->codeMaps['product_form'][$formCode])) {
+                $product->setProductFormName($this->codeMaps['product_form'][$formCode]);
+            }
+        }
+    }
+
+    /**
      * Parse supply information
      *
      * @param \DOMNode $productNode
@@ -798,12 +818,31 @@ class OnixParser
                 $availabilityStatus = $this->codeMaps['availability_code'][$availability] ?? 'unknown';
                 $product->setAvailable($availabilityStatus === 'available');
             }
+
+            // In parseSupply method, add:
+            $supplierGLN = $this->getNodeValue($this->fieldMappings['supply']['gln'], $supplyNode);
+            if ($supplierGLN) {
+                $product->setSupplierGLN($supplierGLN);
+            }
+
+
             
             // Parse prices
             $priceNodes = $this->queryNodes($this->fieldMappings['pricing']['price_nodes'], $supplyNode);
             
             foreach ($priceNodes as $priceNode) {
                 $price = new Price();
+
+                // In price parsing section, add:
+                $taxType = $this->getNodeValue($this->fieldMappings['pricing']['tax_type'], $priceNode);
+                if ($taxType) {
+                    $price->setTaxType($taxType);
+                }
+
+                $taxRateCode = $this->getNodeValue($this->fieldMappings['pricing']['tax_rate_code'], $priceNode);
+                if ($taxRateCode) {
+                    $price->setTaxRateCode($taxRateCode);
+                }
                 
                 // Get price type
                 $priceType = $this->getNodeValue($this->fieldMappings['pricing']['price_type'], $priceNode);

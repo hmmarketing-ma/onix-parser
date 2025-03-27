@@ -28,6 +28,16 @@ class Price
      * @var float Tax rate percentage
      */
     private $taxRate;
+
+    /**
+     * @var string Tax type code
+     */
+    private $taxType;
+
+    /**
+     * @var string Tax rate code
+     */
+    private $taxRateCode;
     
     /**
      * @var bool Whether the product is free
@@ -215,5 +225,50 @@ class Price
     public function __toString()
     {
         return $this->getFormattedPrice();
+    }
+
+
+    /**
+     * Get tax type code
+     * 
+     * @return string|null
+     */
+    public function getTaxType()
+    {
+        return $this->taxType;
+    }
+
+    /**
+     * Set tax type code
+     * 
+     * @param string $taxType
+     * @return self
+     */
+    public function setTaxType($taxType)
+    {
+        $this->taxType = $taxType;
+        return $this;
+    }
+
+    /**
+     * Get tax rate code
+     * 
+     * @return string|null
+     */
+    public function getTaxRateCode()
+    {
+        return $this->taxRateCode;
+    }
+
+    /**
+     * Set tax rate code
+     * 
+     * @param string $taxRateCode
+     * @return self
+     */
+    public function setTaxRateCode($taxRateCode)
+    {
+        $this->taxRateCode = $taxRateCode;
+        return $this;
     }
 }
