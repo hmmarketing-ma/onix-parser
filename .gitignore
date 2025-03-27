@@ -61,7 +61,7 @@ $RECYCLE.BIN/
 !/data/thema_codes.json
 
 # Test files
-/tests/fixtures/large-samples/
+/tests/fixtures/onix_samples/
 
 # Backup files
 *~
