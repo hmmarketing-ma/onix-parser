@@ -321,6 +321,9 @@ class OnixParser
         
         // Parse identifiers (ISBN, EAN, etc.)
         $this->parseIdentifiers($productNode, $product);
+
+        // Parse product form - ADDED THIS LINE
+        $this->parseProductForm($productNode, $product);
         
         // Parse title information
         $this->parseTitle($productNode, $product);
