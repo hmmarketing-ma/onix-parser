@@ -6,6 +6,7 @@ A modern, object-oriented PHP library for parsing ONIX (ONline Information eXcha
 
 - Full support for ONIX 3.0 XML
 - Handles both namespaced and non-namespaced XML
+- Batch processing for large XML files with memory-efficient streaming parser
 - Comprehensive subject classification support (CLIL, THEMA, ScoLOMFR)
 - Support for product images and other media resources
 - Modular, object-oriented design
@@ -127,6 +128,61 @@ try {
 ```
 
 See `Example.php` for a more detailed usage example.
+
+## Batch Processing for Large Files
+
+The ONIX Parser supports batch processing of large XML files using a streaming approach, which is more memory-efficient and helps avoid timeout issues when dealing with very large ONIX files.
+
+```php
+<?php
+
+require_once 'vendor/autoload.php';
+
+use ONIXParser\OnixParser;
+use ONIXParser\Logger;
+
+// Create a parser with logger
+$logger = new Logger(Logger::INFO, 'onix_streaming_parser.log');
+$parser = new OnixParser($logger);
+
+// Define a callback function to process each product as it's parsed
+$productCallback = function($product, $index, $total) {
+    echo "Processing product " . ($index + 1) . " of $total: " . $product->getRecordReference() . "\n";
+    
+    // You can do additional processing here, such as:
+    // - Save to database
+    // - Generate reports
+    // - Export to other formats
+    
+    // For this example, we'll just print the title
+    if ($product->getTitle()) {
+        echo "  Title: " . $product->getTitle()->getText() . "\n";
+    }
+};
+
+// Options for batch processing
+$options = [
+    'limit' => 100,              // Process only 100 products (0 means no limit)
+    'offset' => 0,               // Start from the first product
+    'callback' => $productCallback,  // Process each product as it's parsed
+    'continue_on_error' => true, // Continue processing if an error occurs
+];
+
+// Parse the file using streaming approach
+$onix = $parser->parseFileStreaming('path/to/large/onix/file.xml', $options);
+```
+
+### Benefits of Streaming Parser
+
+The streaming parser offers several advantages for large ONIX files:
+
+1. **Memory Efficiency**: Processes one product at a time, keeping memory usage low
+2. **Batch Processing**: Can process a subset of products (using limit and offset)
+3. **Progress Tracking**: Provides real-time feedback through the callback function
+4. **Error Handling**: Can continue processing even if some products fail to parse
+5. **Performance**: Better performance for large files, avoiding timeouts
+
+See `examples/streaming.php` for a complete example of using the streaming parser.
 
 ## Subject Classification
 
