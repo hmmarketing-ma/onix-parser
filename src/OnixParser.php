@@ -196,6 +196,356 @@ class OnixParser
             libxml_use_internal_errors($previous);
         }
     }
+
+    /**
+     * Parse ONIX XML file using streaming approach for large files
+     *
+     * @param string $xmlPath Path to XML file
+     * @param array $options Options for batch processing:
+     *                      - limit: Maximum number of products to process (0 for all)
+     *                      - offset: Number of products to skip before processing
+     *                      - callback: Callback function to call for each product
+     *                      - continue_on_error: Whether to continue processing on error
+     * @return Onix Parsed data as an Onix object
+     * @throws \Exception
+     */
+    public function parseFileStreaming(string $xmlPath, array $options = []): Onix
+    {
+        // Set default options
+        $options = array_merge([
+            'limit' => 0, // 0 means no limit
+            'offset' => 0,
+            'callback' => null,
+            'continue_on_error' => true,
+        ], $options);
+
+        $this->xmlPath = $xmlPath;
+        
+        if (!file_exists($xmlPath)) {
+            throw new \Exception("XML file not found: $xmlPath");
+        }
+
+        // Create a new Onix object
+        $this->onix = new Onix();
+        
+        // Enable user error handling
+        $previous = libxml_use_internal_errors(true);
+
+        try {
+            // Create XMLReader instance
+            $reader = new \XMLReader();
+            
+            // Open the XML file
+            if (!$reader->open($xmlPath)) {
+                $errors = libxml_get_errors();
+                libxml_clear_errors();
+                throw new \Exception('Failed to open XML file: ' . $this->formatLibXMLErrors($errors));
+            }
+            
+            // Variables to track progress
+            $productCount = 0;
+            $processedCount = 0;
+            $skippedCount = 0;
+            $headerProcessed = false;
+            $versionDetected = false;
+            
+            // Read the XML file
+            while ($reader->read()) {
+                // Process only element nodes
+                if ($reader->nodeType !== \XMLReader::ELEMENT) {
+                    continue;
+                }
+                
+                // Check for namespace
+                if (!$headerProcessed && $reader->namespaceURI) {
+                    $this->hasNamespace = true;
+                    $this->namespaceURI = $reader->namespaceURI;
+                    $this->logger->info("XML has namespace: " . $this->namespaceURI);
+                }
+                
+                // Detect ONIX version from root element
+                if (!$versionDetected && ($reader->name === 'ONIXMessage' || $reader->localName === 'ONIXMessage')) {
+                    $release = $reader->getAttribute('release');
+                    if ($release) {
+                        $this->onix->setVersion('3.' . $release);
+                    } else {
+                        $this->onix->setVersion('3.0');
+                    }
+                    $versionDetected = true;
+                }
+                
+                // Process header information
+                if (!$headerProcessed && 
+                    ($reader->name === 'Header' || $reader->localName === 'Header')) {
+                    // Convert current node to DOM element for processing
+                    $headerNode = $this->getNodeFromReader($reader);
+                    if ($headerNode) {
+                        $header = $this->parseHeaderFromNode($headerNode);
+                        $this->onix->setHeader($header);
+                        $headerProcessed = true;
+                    }
+                }
+                
+                // Process product elements
+                if ($reader->name === 'Product' || $reader->localName === 'Product') {
+                    $productCount++;
+                    
+                    // Skip products based on offset
+                    if ($productCount <= $options['offset']) {
+                        $skippedCount++;
+                        $reader->next();
+                        continue;
+                    }
+                    
+                    // Check if we've reached the limit
+                    if ($options['limit'] > 0 && $processedCount >= $options['limit']) {
+                        break;
+                    }
+                    
+                    try {
+                        // Convert current node to DOM element for processing
+                        $productNode = $this->getNodeFromReader($reader);
+                        if ($productNode) {
+                            // Parse the product using a custom method for streaming
+                            $product = $this->parseProductStreaming($productNode);
+                            
+                            // Add to Onix object
+                            $this->onix->setProduct($product);
+                            
+                            // Call callback if provided
+                            if (is_callable($options['callback'])) {
+                                call_user_func($options['callback'], $product, $processedCount, $productCount);
+                            }
+                            
+                            $processedCount++;
+                            $this->logger->info("Successfully parsed product: " . $product->getRecordReference() . 
+                                            " ($processedCount of $productCount)");
+                        }
+                    } catch (\Exception $e) {
+                        $this->logger->error("Error parsing product #$productCount: " . $e->getMessage());
+                        
+                        if (!$options['continue_on_error']) {
+                            throw $e;
+                        }
+                    }
+                }
+            }
+            
+            // Close the reader
+            $reader->close();
+            
+            $this->logger->info("Streaming parse completed: $processedCount products processed, $skippedCount skipped");
+            
+            return $this->onix;
+        } catch (\Exception $e) {
+            $this->logger->error("Error parsing ONIX file: " . $e->getMessage());
+            throw $e;
+        } finally {
+            // Restore previous error handling state
+            libxml_use_internal_errors($previous);
+        }
+    }
+
+    /**
+     * Convert XMLReader node to DOMNode
+     *
+     * @param \XMLReader $reader
+     * @return \DOMNode|null
+     */
+    private function getNodeFromReader(\XMLReader $reader): ?\DOMNode
+    {
+        if ($reader->nodeType !== \XMLReader::ELEMENT) {
+            return null;
+        }
+        
+        // Create a new DOM document
+        $dom = new \DOMDocument();
+        
+        // Import the current node
+        $node = $reader->expand($dom);
+        
+        if (!$node) {
+            return null;
+        }
+        
+        return $node;
+    }
+
+    /**
+     * Parse header information from a DOM node
+     *
+     * @param \DOMNode $headerNode
+     * @return Header
+     */
+    private function parseHeaderFromNode(\DOMNode $headerNode): Header
+    {
+        $header = new Header();
+        
+        // Create a temporary DOMXPath for this header node
+        $tempDoc = new \DOMDocument();
+        $tempDoc->appendChild($tempDoc->importNode($headerNode, true));
+        $tempXpath = new \DOMXPath($tempDoc);
+        
+        // Register namespace if needed
+        if ($this->hasNamespace) {
+            $tempXpath->registerNamespace('onix', $this->namespaceURI);
+        }
+        
+        // Helper function to get node value
+        $getNodeValue = function($xpaths) use ($tempXpath) {
+            foreach ($xpaths as $xpath) {
+                try {
+                    $nodes = $tempXpath->query($xpath);
+                    if ($nodes && $nodes->length > 0) {
+                        return trim($nodes->item(0)->nodeValue);
+                    }
+                } catch (\Exception $e) {
+                    // Skip to next xpath
+                }
+            }
+            return null;
+        };
+        
+        // Parse header fields
+        $sender = $getNodeValue($this->fieldMappings['header']['sender']);
+        $header->setSender($sender);
+        
+        $contact = $getNodeValue($this->fieldMappings['header']['contact']);
+        $header->setContact($contact);
+        
+        $email = $getNodeValue($this->fieldMappings['header']['email']);
+        $header->setEmail($email);
+        
+        $sentDateTime = $getNodeValue($this->fieldMappings['header']['sent_date']);
+        $header->setSentDateTime($this->formatDate($sentDateTime));
+        
+        // Store original XML
+        $headerXml = new \SimpleXMLElement($headerNode->ownerDocument->saveXML($headerNode));
+        $header->setXml($headerXml);
+        
+        return $header;
+    }
+
+    /**
+     * Parse a single product for streaming
+     * This method is similar to parseProduct but uses direct DOM methods instead of XPath
+     *
+     * @param \DOMNode $productNode
+     * @return Product
+     */
+    private function parseProductStreaming(\DOMNode $productNode): Product
+    {
+        $product = new Product();
+        
+        // Create a new DOM document and import the product node
+        $dom = new \DOMDocument();
+        $importedNode = $dom->importNode($productNode, true);
+        $dom->appendChild($importedNode);
+        
+        // Create a new XPath object for this document
+        $xpath = new \DOMXPath($dom);
+        
+        // Register namespace if needed
+        if ($this->hasNamespace) {
+            $xpath->registerNamespace('onix', $this->namespaceURI);
+        }
+        
+        // Helper function to get node value using the local xpath
+        $getNodeValue = function($xpaths) use ($xpath) {
+            foreach ($xpaths as $xpathExpr) {
+                try {
+                    $nodes = $xpath->query($xpathExpr);
+                    if ($nodes && $nodes->length > 0) {
+                        return trim($nodes->item(0)->nodeValue);
+                    }
+                } catch (\Exception $e) {
+                    // Skip to next xpath
+                }
+            }
+            return null;
+        };
+        
+        // Helper function to query nodes using the local xpath
+        $queryNodes = function($xpaths) use ($xpath) {
+            foreach ($xpaths as $xpathExpr) {
+                try {
+                    $nodes = $xpath->query($xpathExpr);
+                    if ($nodes && $nodes->length > 0) {
+                        $result = [];
+                        foreach ($nodes as $node) {
+                            $result[] = $node;
+                        }
+                        return $result;
+                    }
+                } catch (\Exception $e) {
+                    // Skip to next xpath
+                }
+            }
+            return [];
+        };
+        
+        // Set record reference
+        $recordReference = $getNodeValue($this->fieldMappings['record_reference']);
+        $product->setRecordReference($recordReference);
+        
+        // Set notification type
+        $type = $getNodeValue($this->fieldMappings['notification']['type']);
+        if ($type) {
+            $product->setNotificationType($type);
+            $product->setNotificationTypeName($this->codeMaps['notification_type'][$type] ?? 'unknown');
+        }
+        
+        $deletionText = $getNodeValue($this->fieldMappings['notification']['deletion_text']);
+        if ($deletionText) {
+            $product->setDeletionText($deletionText);
+        }
+        
+        // Parse identifiers (ISBN, EAN, etc.)
+        foreach ($this->fieldMappings['identifiers'] as $key => $xpathExpr) {
+            $value = $getNodeValue($xpathExpr);
+            if ($value) {
+                // Set specific identifiers directly on product for convenience
+                switch ($key) {
+                    case 'isbn':
+                        $product->setIsbn($value);
+                        break;
+                    case 'ean':
+                        $product->setEan($value);
+                        break;
+                }
+            }
+        }
+        
+        // Parse product form
+        $formCode = $getNodeValue($this->fieldMappings['product_form']['form_code']);
+        if ($formCode) {
+            $product->setProductForm($formCode);
+            $product->setProductFormName($this->codeMaps['product_form'][$formCode] ?? 'unknown');
+        }
+        
+        // Parse title information
+        $titleText = $getNodeValue($this->fieldMappings['title']['main']);
+        $subtitle = $getNodeValue($this->fieldMappings['title']['subtitle']);
+        
+        if ($titleText) {
+            $title = new Title();
+            $title->setText($titleText);
+            
+            if ($subtitle) {
+                $title->setSubtitle($subtitle);
+            }
+            
+            $product->setTitle($title);
+        }
+        
+        // Store original XML
+        $productXml = new \SimpleXMLElement($dom->saveXML($importedNode));
+        $product->setXml($productXml);
+        
+        return $product;
+    }
+
+   
     
     /**
      * Detect and set ONIX version
