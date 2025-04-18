@@ -428,7 +428,7 @@ class OnixParser
 
     /**
      * Parse a single product for streaming
-     * This method is similar to parseProduct but uses direct DOM methods instead of XPath
+     * This method uses the same parsing methods as the regular method but with a local XPath context
      *
      * @param \DOMNode $productNode
      * @return Product
@@ -450,93 +450,36 @@ class OnixParser
             $xpath->registerNamespace('onix', $this->namespaceURI);
         }
         
-        // Helper function to get node value using the local xpath
-        $getNodeValue = function($xpaths) use ($xpath) {
-            foreach ($xpaths as $xpathExpr) {
-                try {
-                    $nodes = $xpath->query($xpathExpr);
-                    if ($nodes && $nodes->length > 0) {
-                        return trim($nodes->item(0)->nodeValue);
-                    }
-                } catch (\Exception $e) {
-                    // Skip to next xpath
-                }
-            }
-            return null;
-        };
-        
-        // Helper function to query nodes using the local xpath
-        $queryNodes = function($xpaths) use ($xpath) {
-            foreach ($xpaths as $xpathExpr) {
-                try {
-                    $nodes = $xpath->query($xpathExpr);
-                    if ($nodes && $nodes->length > 0) {
-                        $result = [];
-                        foreach ($nodes as $node) {
-                            $result[] = $node;
-                        }
-                        return $result;
-                    }
-                } catch (\Exception $e) {
-                    // Skip to next xpath
-                }
-            }
-            return [];
-        };
-        
         // Set record reference
-        $recordReference = $getNodeValue($this->fieldMappings['record_reference']);
+        $recordReference = $this->getNodeValueWithContext($this->fieldMappings['record_reference'], $importedNode, $xpath);
         $product->setRecordReference($recordReference);
         
         // Set notification type
-        $type = $getNodeValue($this->fieldMappings['notification']['type']);
-        if ($type) {
-            $product->setNotificationType($type);
-            $product->setNotificationTypeName($this->codeMaps['notification_type'][$type] ?? 'unknown');
-        }
-        
-        $deletionText = $getNodeValue($this->fieldMappings['notification']['deletion_text']);
-        if ($deletionText) {
-            $product->setDeletionText($deletionText);
-        }
+        $this->parseNotification($importedNode, $product, $xpath);
         
         // Parse identifiers (ISBN, EAN, etc.)
-        foreach ($this->fieldMappings['identifiers'] as $key => $xpathExpr) {
-            $value = $getNodeValue($xpathExpr);
-            if ($value) {
-                // Set specific identifiers directly on product for convenience
-                switch ($key) {
-                    case 'isbn':
-                        $product->setIsbn($value);
-                        break;
-                    case 'ean':
-                        $product->setEan($value);
-                        break;
-                }
-            }
-        }
+        $this->parseIdentifiers($importedNode, $product, $xpath);
         
         // Parse product form
-        $formCode = $getNodeValue($this->fieldMappings['product_form']['form_code']);
-        if ($formCode) {
-            $product->setProductForm($formCode);
-            $product->setProductFormName($this->codeMaps['product_form'][$formCode] ?? 'unknown');
-        }
+        $this->parseProductForm($importedNode, $product, $xpath);
         
         // Parse title information
-        $titleText = $getNodeValue($this->fieldMappings['title']['main']);
-        $subtitle = $getNodeValue($this->fieldMappings['title']['subtitle']);
+        $this->parseTitle($importedNode, $product, $xpath);
         
-        if ($titleText) {
-            $title = new Title();
-            $title->setText($titleText);
-            
-            if ($subtitle) {
-                $title->setSubtitle($subtitle);
-            }
-            
-            $product->setTitle($title);
-        }
+        // Parse subjects
+        $this->parseSubjects($importedNode, $product, $xpath);
+        
+        // Parse descriptions
+        $this->parseDescriptions($importedNode, $product, $xpath);
+        
+        // Parse images and resources
+        $this->parseImages($importedNode, $product, $xpath);
+        
+        // Parse collections
+        $this->parseCollections($importedNode, $product, $xpath);
+        
+        // Parse supply details (availability, prices)
+        $this->parseSupply($importedNode, $product, $xpath);
         
         // Store original XML
         $productXml = new \SimpleXMLElement($dom->saveXML($importedNode));
@@ -705,11 +648,12 @@ class OnixParser
      *
      * @param \DOMNode $productNode
      * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
      */
-    private function parseNotification(\DOMNode $productNode, Product $product): void
+    private function parseNotification(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
-        $type = $this->getNodeValue($this->fieldMappings['notification']['type'], $productNode);
-        $deletionText = $this->getNodeValue($this->fieldMappings['notification']['deletion_text'], $productNode);
+        $type = $this->getNodeValueWithContext($this->fieldMappings['notification']['type'], $productNode, $localXpath);
+        $deletionText = $this->getNodeValueWithContext($this->fieldMappings['notification']['deletion_text'], $productNode, $localXpath);
         
         if ($type) {
             $product->setNotificationType($type);
@@ -726,11 +670,12 @@ class OnixParser
      *
      * @param \DOMNode $productNode
      * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
      */
-    private function parseIdentifiers(\DOMNode $productNode, Product $product): void
+    private function parseIdentifiers(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
         foreach ($this->fieldMappings['identifiers'] as $key => $xpath) {
-            $value = $this->getNodeValue($xpath, $productNode);
+            $value = $this->getNodeValueWithContext($xpath, $productNode, $localXpath);
             if ($value) {
                 // Set specific identifiers directly on product for convenience
                 switch ($key) {
@@ -750,11 +695,12 @@ class OnixParser
      *
      * @param \DOMNode $productNode
      * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
      */
-    private function parseTitle(\DOMNode $productNode, Product $product): void
+    private function parseTitle(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
-        $titleText = $this->getNodeValue($this->fieldMappings['title']['main'], $productNode);
-        $subtitle = $this->getNodeValue($this->fieldMappings['title']['subtitle'], $productNode);
+        $titleText = $this->getNodeValueWithContext($this->fieldMappings['title']['main'], $productNode, $localXpath);
+        $subtitle = $this->getNodeValueWithContext($this->fieldMappings['title']['subtitle'], $productNode, $localXpath);
         
         if ($titleText) {
             $title = new Title();
@@ -774,21 +720,22 @@ class OnixParser
      *
      * @param \DOMNode $productNode
      * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
      */
-    private function parseSubjects(\DOMNode $productNode, Product $product): void
+    private function parseSubjects(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
         // Get subject nodes
-        $subjectNodes = $this->queryNodes($this->fieldMappings['subjects']['nodes'], $productNode);
+        $subjectNodes = $this->queryNodesWithContext($this->fieldMappings['subjects']['nodes'], $productNode, $localXpath);
         
         foreach ($subjectNodes as $subjectNode) {
             $subject = new Subject();
             
             // Check if this is the main subject
-            $mainSubject = $this->queryNode($this->fieldMappings['subjects']['main_subject'], $subjectNode) !== null;
+            $mainSubject = $this->queryNodeWithContext($this->fieldMappings['subjects']['main_subject'], $subjectNode, $localXpath) !== null;
             $subject->setMainSubject($mainSubject);
             
             // Get scheme identifier
-            $schemeIdentifier = $this->getNodeValue($this->fieldMappings['subjects']['scheme_identifier'], $subjectNode);
+            $schemeIdentifier = $this->getNodeValueWithContext($this->fieldMappings['subjects']['scheme_identifier'], $subjectNode, $localXpath);
             if ($schemeIdentifier) {
                 $subject->setScheme($schemeIdentifier);
             } else {
@@ -796,7 +743,7 @@ class OnixParser
             }
             
             // Get subject code
-            $code = $this->getNodeValue($this->fieldMappings['subjects']['code'], $subjectNode);
+            $code = $this->getNodeValueWithContext($this->fieldMappings['subjects']['code'], $subjectNode, $localXpath);
             if ($code) {
                 $subject->setCode($code);
                 
@@ -858,7 +805,7 @@ class OnixParser
             }
             
             // Get explicit heading text (especially for ScoLOMFR)
-            $headingText = $this->getNodeValue($this->fieldMappings['subjects']['heading_text'], $subjectNode);
+            $headingText = $this->getNodeValueWithContext($this->fieldMappings['subjects']['heading_text'], $subjectNode, $localXpath);
             if ($headingText) {
                 $subject->setHeadingText($headingText);
             }
@@ -914,18 +861,19 @@ class OnixParser
      *
      * @param \DOMNode $productNode
      * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
      */
-    private function parseDescriptions(\DOMNode $productNode, Product $product): void
+    private function parseDescriptions(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
         // Get text content nodes
-        $textNodes = $this->queryNodes($this->fieldMappings['description']['text_nodes'], $productNode);
+        $textNodes = $this->queryNodesWithContext($this->fieldMappings['description']['text_nodes'], $productNode, $localXpath);
         
         foreach ($textNodes as $textNode) {
             try {
                 $description = new \ONIXParser\Model\Description();
                 
                 // Get text type
-                $textType = $this->getNodeValue($this->fieldMappings['description']['text_type'], $textNode);
+                $textType = $this->getNodeValueWithContext($this->fieldMappings['description']['text_type'], $textNode, $localXpath);
                 if ($textType) {
                     $description->setType($textType);
                     
@@ -936,7 +884,7 @@ class OnixParser
                 }
                 
                 // Get text format
-                $textFormat = $this->getNodeValue($this->fieldMappings['description']['text_format'], $textNode);
+                $textFormat = $this->getNodeValueWithContext($this->fieldMappings['description']['text_format'], $textNode, $localXpath);
                 if ($textFormat) {
                     $description->setFormat($textFormat);
                     
@@ -947,7 +895,7 @@ class OnixParser
                 }
                 
                 // Get text content
-                $textContent = $this->getNodeValue($this->fieldMappings['description']['text_content'], $textNode);
+                $textContent = $this->getNodeValueWithContext($this->fieldMappings['description']['text_content'], $textNode, $localXpath);
                 if ($textContent) {
                     $description->setContent($textContent);
                     
@@ -972,18 +920,19 @@ class OnixParser
      *
      * @param \DOMNode $productNode
      * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
      */
-    private function parseImages(\DOMNode $productNode, Product $product): void
+    private function parseImages(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
         // Get image nodes
-        $imageNodes = $this->queryNodes($this->fieldMappings['images']['nodes'], $productNode);
+        $imageNodes = $this->queryNodesWithContext($this->fieldMappings['images']['nodes'], $productNode, $localXpath);
         
         foreach ($imageNodes as $imageNode) {
             try {
                 $image = new \ONIXParser\Model\Image();
                 
                 // Get content type
-                $contentType = $this->getNodeValue($this->fieldMappings['images']['content_type'], $imageNode);
+                $contentType = $this->getNodeValueWithContext($this->fieldMappings['images']['content_type'], $imageNode, $localXpath);
                 if ($contentType) {
                     $image->setContentType($contentType);
                     
@@ -994,7 +943,7 @@ class OnixParser
                 }
                 
                 // Get resource mode
-                $mode = $this->getNodeValue($this->fieldMappings['images']['mode'], $imageNode);
+                $mode = $this->getNodeValueWithContext($this->fieldMappings['images']['mode'], $imageNode, $localXpath);
                 if ($mode) {
                     $image->setMode($mode);
                     
@@ -1005,7 +954,7 @@ class OnixParser
                 }
                 
                 // Get URL
-                $url = $this->getNodeValue($this->fieldMappings['images']['url'], $imageNode);
+                $url = $this->getNodeValueWithContext($this->fieldMappings['images']['url'], $imageNode, $localXpath);
                 if ($url) {
                     $image->setUrl($url);
                     
@@ -1035,25 +984,26 @@ class OnixParser
      *
      * @param \DOMNode $productNode
      * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
      */
-    private function parseCollections(\DOMNode $productNode, Product $product): void
+    private function parseCollections(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
         // First check if there's a NoCollection flag
-        $noCollection = $this->queryNode($this->fieldMappings['no_collection'], $productNode);
+        $noCollection = $this->queryNodeWithContext($this->fieldMappings['no_collection'], $productNode, $localXpath);
         if ($noCollection) {
             $this->logger->debug("Product explicitly has no collections");
             return;
         }
 
         // Get collection nodes
-        $collectionNodes = $this->queryNodes($this->fieldMappings['collections']['nodes'], $productNode);
+        $collectionNodes = $this->queryNodesWithContext($this->fieldMappings['collections']['nodes'], $productNode, $localXpath);
         
         foreach ($collectionNodes as $collectionNode) {
             try {
                 $collection = new \ONIXParser\Model\Collection();
                 
                 // Get collection type
-                $type = $this->getNodeValue($this->fieldMappings['collections']['type'], $collectionNode);
+                $type = $this->getNodeValueWithContext($this->fieldMappings['collections']['type'], $collectionNode, $localXpath);
                 if ($type) {
                     $collection->setType($type);
                     
@@ -1064,22 +1014,22 @@ class OnixParser
                 }
                 
                 // Process title detail nodes
-                $titleDetailNodes = $this->queryNodes($this->fieldMappings['collections']['title_details'], $collectionNode);
+                $titleDetailNodes = $this->queryNodesWithContext($this->fieldMappings['collections']['title_details'], $collectionNode, $localXpath);
                 $hasPrimaryTitle = false;
                 
                 foreach ($titleDetailNodes as $titleDetailNode) {
                     // Get title type
-                    $titleType = $this->getNodeValue($this->fieldMappings['collections']['title_type'], $titleDetailNode);
+                    $titleType = $this->getNodeValueWithContext($this->fieldMappings['collections']['title_type'], $titleDetailNode, $localXpath);
                     
                     // Process title elements
-                    $titleElementNodes = $this->queryNodes($this->fieldMappings['collections']['title_elements'], $titleDetailNode);
+                    $titleElementNodes = $this->queryNodesWithContext($this->fieldMappings['collections']['title_elements'], $titleDetailNode, $localXpath);
                     
                     foreach ($titleElementNodes as $titleElementNode) {
                         // Get title level
-                        $titleLevel = $this->getNodeValue($this->fieldMappings['collections']['title_level'], $titleElementNode);
+                        $titleLevel = $this->getNodeValueWithContext($this->fieldMappings['collections']['title_level'], $titleElementNode, $localXpath);
                         
                         // Get title text
-                        $titleText = $this->getNodeValue($this->fieldMappings['collections']['title_text'], $titleElementNode);
+                        $titleText = $this->getNodeValueWithContext($this->fieldMappings['collections']['title_text'], $titleElementNode, $localXpath);
                         
                         if ($titleText) {
                             // If this is the preferred title (type 01, level 02), set it as the main title
@@ -1093,7 +1043,7 @@ class OnixParser
                         }
                         
                         // Get part number if available
-                        $partNumber = $this->getNodeValue($this->fieldMappings['collections']['part_number'], $titleElementNode);
+                        $partNumber = $this->getNodeValueWithContext($this->fieldMappings['collections']['part_number'], $titleElementNode, $localXpath);
                         if ($partNumber) {
                             $collection->setPartNumber($partNumber);
                         }
@@ -1123,10 +1073,11 @@ class OnixParser
      *
      * @param \DOMNode $productNode
      * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
      */
-    private function parseProductForm(\DOMNode $productNode, Product $product): void
+    private function parseProductForm(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
-        $formCode = $this->getNodeValue($this->fieldMappings['product_form']['form_code'], $productNode);
+        $formCode = $this->getNodeValueWithContext($this->fieldMappings['product_form']['form_code'], $productNode, $localXpath);
         
         if ($formCode) {
             $product->setProductForm($formCode);
@@ -1143,16 +1094,17 @@ class OnixParser
      *
      * @param \DOMNode $productNode
      * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
      */
-    private function parseSupply(\DOMNode $productNode, Product $product): void
+    private function parseSupply(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
         // Get supply details
-        $supplyDetailNodes = $this->queryNodes($this->fieldMappings['supply']['supply_details'], $productNode);
+        $supplyDetailNodes = $this->queryNodesWithContext($this->fieldMappings['supply']['supply_details'], $productNode, $localXpath);
         
         foreach ($supplyDetailNodes as $supplyNode) {
             // Parse supplier information
-            $supplierName = $this->getNodeValue($this->fieldMappings['supply']['supplier_name'], $supplyNode);
-            $supplierRole = $this->getNodeValue($this->fieldMappings['supply']['supplier_role'], $supplyNode);
+            $supplierName = $this->getNodeValueWithContext($this->fieldMappings['supply']['supplier_name'], $supplyNode, $localXpath);
+            $supplierRole = $this->getNodeValueWithContext($this->fieldMappings['supply']['supplier_role'], $supplyNode, $localXpath);
             
             if ($supplierName) {
                 $product->setSupplierName($supplierName);
@@ -1163,7 +1115,7 @@ class OnixParser
             }
             
             // Parse availability
-            $availability = $this->getNodeValue($this->fieldMappings['stock']['availability'], $supplyNode);
+            $availability = $this->getNodeValueWithContext($this->fieldMappings['stock']['availability'], $supplyNode, $localXpath);
             if ($availability) {
                 $product->setAvailabilityCode($availability);
                 
@@ -1172,40 +1124,38 @@ class OnixParser
                 $product->setAvailable($availabilityStatus === 'available');
             }
 
-            // In parseSupply method, add:
-            $supplierGLN = $this->getNodeValue($this->fieldMappings['supply']['gln'], $supplyNode);
+            // Extract and set supplier GLN
+            $supplierGLN = $this->getNodeValueWithContext($this->fieldMappings['supply']['gln'], $supplyNode, $localXpath);
             if ($supplierGLN) {
                 $product->setSupplierGLN($supplierGLN);
             }
-
-
             
             // Parse prices
-            $priceNodes = $this->queryNodes($this->fieldMappings['pricing']['price_nodes'], $supplyNode);
+            $priceNodes = $this->queryNodesWithContext($this->fieldMappings['pricing']['price_nodes'], $supplyNode, $localXpath);
             
             foreach ($priceNodes as $priceNode) {
                 $price = new Price();
 
-                // In price parsing section, add:
-                $taxType = $this->getNodeValue($this->fieldMappings['pricing']['tax_type'], $priceNode);
+                // Get tax information
+                $taxType = $this->getNodeValueWithContext($this->fieldMappings['pricing']['tax_type'], $priceNode, $localXpath);
                 if ($taxType) {
                     $price->setTaxType($taxType);
                 }
 
-                $taxRateCode = $this->getNodeValue($this->fieldMappings['pricing']['tax_rate_code'], $priceNode);
+                $taxRateCode = $this->getNodeValueWithContext($this->fieldMappings['pricing']['tax_rate_code'], $priceNode, $localXpath);
                 if ($taxRateCode) {
                     $price->setTaxRateCode($taxRateCode);
                 }
                 
                 // Get price type
-                $priceType = $this->getNodeValue($this->fieldMappings['pricing']['price_type'], $priceNode);
+                $priceType = $this->getNodeValueWithContext($this->fieldMappings['pricing']['price_type'], $priceNode, $localXpath);
                 if ($priceType) {
                     $price->setType($priceType);
                 }
                 
                 // Get price amount and currency
-                $priceAmount = $this->getNodeValue($this->fieldMappings['pricing']['price_amount'], $priceNode);
-                $currency = $this->getNodeValue($this->fieldMappings['pricing']['currency_code'], $priceNode);
+                $priceAmount = $this->getNodeValueWithContext($this->fieldMappings['pricing']['price_amount'], $priceNode, $localXpath);
+                $currency = $this->getNodeValueWithContext($this->fieldMappings['pricing']['currency_code'], $priceNode, $localXpath);
                 
                 if ($priceAmount) {
                     $price->setAmount((float)$priceAmount);
@@ -1215,7 +1165,7 @@ class OnixParser
                     }
                     
                     // Get tax rate if available
-                    $taxRate = $this->getNodeValue($this->fieldMappings['pricing']['tax_rate_percent'], $priceNode);
+                    $taxRate = $this->getNodeValueWithContext($this->fieldMappings['pricing']['tax_rate_percent'], $priceNode, $localXpath);
                     if ($taxRate) {
                         $price->setTaxRate((float)$taxRate);
                     }
@@ -1231,13 +1181,17 @@ class OnixParser
      * 
      * @param array $xpaths Array of XPath expressions to try
      * @param \DOMNode|null $contextNode Optional context node
+     * @param \DOMXPath|null $localXpath Optional local XPath object
      * @return array Array of matched nodes
      */
-    private function queryNodes(array $xpaths, ?\DOMNode $contextNode = null): array
+    private function queryNodesWithContext(array $xpaths, ?\DOMNode $contextNode = null, ?\DOMXPath $localXpath = null): array
     {
+        // If local XPath is provided, use it, otherwise use the global one
+        $xpathObj = $localXpath ?? $this->xpath;
+        
         foreach ($xpaths as $xpath) {
             try {
-                $nodes = $this->xpath->query($xpath, $contextNode);
+                $nodes = $xpathObj->query($xpath, $contextNode);
                 if ($nodes && $nodes->length > 0) {
                     $result = [];
                     foreach ($nodes as $node) {
@@ -1254,7 +1208,35 @@ class OnixParser
     }
     
     /**
+     * Helper method to query nodes using multiple XPath expressions
+     * Maintains backward compatibility with existing code
+     * 
+     * @param array $xpaths Array of XPath expressions to try
+     * @param \DOMNode|null $contextNode Optional context node
+     * @return array Array of matched nodes
+     */
+    private function queryNodes(array $xpaths, ?\DOMNode $contextNode = null): array
+    {
+        return $this->queryNodesWithContext($xpaths, $contextNode);
+    }
+    
+    /**
      * Helper method to query a single node using multiple XPath expressions
+     * 
+     * @param array $xpaths Array of XPath expressions to try
+     * @param \DOMNode|null $contextNode Optional context node
+     * @param \DOMXPath|null $localXpath Optional local XPath object
+     * @return \DOMNode|null First matched node or null
+     */
+    private function queryNodeWithContext(array $xpaths, ?\DOMNode $contextNode = null, ?\DOMXPath $localXpath = null): ?\DOMNode
+    {
+        $nodes = $this->queryNodesWithContext($xpaths, $contextNode, $localXpath);
+        return !empty($nodes) ? $nodes[0] : null;
+    }
+    
+    /**
+     * Helper method to query a single node using multiple XPath expressions
+     * Maintains backward compatibility with existing code
      * 
      * @param array $xpaths Array of XPath expressions to try
      * @param \DOMNode|null $contextNode Optional context node
@@ -1262,8 +1244,7 @@ class OnixParser
      */
     private function queryNode(array $xpaths, ?\DOMNode $contextNode = null): ?\DOMNode
     {
-        $nodes = $this->queryNodes($xpaths, $contextNode);
-        return !empty($nodes) ? $nodes[0] : null;
+        return $this->queryNodeWithContext($xpaths, $contextNode);
     }
 
     /**
@@ -1271,12 +1252,26 @@ class OnixParser
      * 
      * @param array $xpaths Array of XPath expressions to try
      * @param \DOMNode|null $contextNode Optional context node
+     * @param \DOMXPath|null $localXpath Optional local XPath object
+     * @return string|null Node value or null if not found
+     */
+    private function getNodeValueWithContext(array $xpaths, ?\DOMNode $contextNode = null, ?\DOMXPath $localXpath = null): ?string
+    {
+        $node = $this->queryNodeWithContext($xpaths, $contextNode, $localXpath);
+        return $node ? trim($node->nodeValue) : null;
+    }
+    
+    /**
+     * Get node value from multiple XPath expressions
+     * Maintains backward compatibility with existing code
+     * 
+     * @param array $xpaths Array of XPath expressions to try
+     * @param \DOMNode|null $contextNode Optional context node
      * @return string|null Node value or null if not found
      */
     private function getNodeValue(array $xpaths, ?\DOMNode $contextNode = null): ?string
     {
-        $node = $this->queryNode($xpaths, $contextNode);
-        return $node ? trim($node->nodeValue) : null;
+        return $this->getNodeValueWithContext($xpaths, $contextNode);
     }
 
     /**
