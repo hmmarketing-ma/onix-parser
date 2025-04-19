@@ -6,9 +6,14 @@ A modern, object-oriented PHP library for parsing ONIX (ONline Information eXcha
 
 - Full support for ONIX 3.0 XML
 - Handles both namespaced and non-namespaced XML
-- Batch processing for large XML files with memory-efficient streaming parser
+- Memory-efficient streaming parser for large XML files
+- Consistent behavior between regular and streaming parsing methods
 - Comprehensive subject classification support (CLIL, THEMA, ScoLOMFR)
+- Rich support for product descriptions with HTML handling
+- Collection and series management with hierarchical relationships
 - Support for product images and other media resources
+- Supplier information extraction including GLN (Global Location Number)
+- Detailed price and availability information
 - Modular, object-oriented design
 - Comprehensive logging
 - Configurable and extensible
@@ -48,6 +53,8 @@ onix-parser/
 │   ├── Logger.php
 │   ├── OnixParser.php
 │   └── Model/
+│       ├── Collection.php
+│       ├── Description.php
 │       ├── Header.php
 │       ├── Image.php
 │       ├── Onix.php
@@ -60,6 +67,7 @@ onix-parser/
 │   └── thema_codes.json
 ├── tests/
 │   ├── OnixParserTest.php
+│   ├── streaming_test.php
 │   └── fixtures/
 │       └── onix_samples/
 │           └── demo.xml
@@ -127,7 +135,7 @@ try {
 }
 ```
 
-See `Example.php` for a more detailed usage example.
+See the examples directory for more detailed usage examples.
 
 ## Batch Processing for Large Files
 
@@ -181,6 +189,7 @@ The streaming parser offers several advantages for large ONIX files:
 3. **Progress Tracking**: Provides real-time feedback through the callback function
 4. **Error Handling**: Can continue processing even if some products fail to parse
 5. **Performance**: Better performance for large files, avoiding timeouts
+6. **Consistency**: Extracts the same data as the regular parser, including supplier GLN
 
 See `examples/streaming.php` for a complete example of using the streaming parser.
 
@@ -331,6 +340,70 @@ if ($collection) {
 }
 ```
 
+## Working with Descriptions
+
+The ONIX Parser provides comprehensive support for product descriptions:
+
+```php
+// Get all descriptions for a product
+$descriptions = $product->getDescriptions();
+
+// Get specific types of descriptions
+$mainDescription = $product->getMainDescription();
+$shortDescription = $product->getShortDescription();
+$longDescription = $product->getLongDescription();
+$tableOfContents = $product->getTableOfContents();
+$reviewQuotes = $product->getReviewQuotes();
+
+// Get descriptions by type code
+$featuresDescriptions = $product->getDescriptionsByType('11'); // Features
+
+// Check if a product has a specific description type
+if ($product->hasDescriptionType('03')) {
+    echo "This product has a long description";
+}
+
+// Working with a description object
+$description = $product->getMainDescription();
+if ($description) {
+    // Get the raw content (which may include HTML)
+    $content = $description->getContent();
+    
+    // Get plain text (with HTML stripped if necessary)
+    $plainText = $description->getPlainText();
+    
+    // Get a short excerpt (useful for search results or listings)
+    $excerpt = $description->getExcerpt(150, '...');
+    
+    // Check if description is in HTML format
+    if ($description->isHtml()) {
+        echo "Description contains HTML formatting";
+    }
+    
+    // Convert to string (same as getPlainText())
+    echo $description; // Implicitly calls __toString()
+}
+```
+
+## Supplier Information
+
+The ONIX Parser extracts supplier information, including the Global Location Number (GLN):
+
+```php
+// Get supplier information
+$supplierName = $product->getSupplierName();
+$supplierRole = $product->getSupplierRole();
+$supplierGLN = $product->getSupplierGLN();
+
+// Check if the supplier is a publisher
+if ($product->getSupplierRole() === '01') {
+    echo "Supplier is the publisher";
+}
+
+// Get formatted supplier information
+echo "Supplied by: " . $product->getSupplierName() . " (GLN: " . $product->getSupplierGLN() . ")";
+```
+
 ## Configuration
 
 ### Logging
@@ -388,45 +461,6 @@ $availabilityCode = $product->getAvailabilityCode();
 // Prices
 $defaultPrice = $product->getDefaultPrice();
 $allPrices = $product->getPrices();
-
-// Get all descriptions for a product
-$descriptions = $product->getDescriptions();
-
-// Get specific types of descriptions
-$mainDescription = $product->getMainDescription();
-$shortDescription = $product->getShortDescription();
-$longDescription = $product->getLongDescription();
-$tableOfContents = $product->getTableOfContents();
-$reviewQuotes = $product->getReviewQuotes();
-
-// Get descriptions by type code
-$featuresDescriptions = $product->getDescriptionsByType('11'); // Features
-
-// Check if a product has a specific description type
-if ($product->hasDescriptionType('03')) {
-    echo "This product has a long description";
-}
-
-// Working with a description object
-$description = $product->getMainDescription();
-if ($description) {
-    // Get the raw content (which may include HTML)
-    $content = $description->getContent();
-    
-    // Get plain text (with HTML stripped if necessary)
-    $plainText = $description->getPlainText();
-    
-    // Get a short excerpt (useful for search results or listings)
-    $excerpt = $description->getExcerpt(150, '...');
-    
-    // Check if description is in HTML format
-    if ($description->isHtml()) {
-        echo "Description contains HTML formatting";
-    }
-    
-    // Convert to string (same as getPlainText())
-    echo $description; // Implicitly calls __toString()
-}
 ```
 
 ### Accessing Original XML
