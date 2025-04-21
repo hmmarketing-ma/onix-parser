@@ -281,6 +281,10 @@ $options = [
 $onix = $parser->parseFileStreaming($onixFilePath, $options);
 ```
 
+## Recent Improvements
+
+1. **Conditional Processing**: Added support for stopping processing when callback returns false in parseFileStreaming. This allows for early termination of processing based on custom conditions.
+
 ## Future Improvements
 
 1. **Unit Tests**: Add more comprehensive unit tests to verify the behavior of both parsing methods.

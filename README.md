@@ -166,6 +166,9 @@ $productCallback = function($product, $index, $total) {
     if ($product->getTitle()) {
         echo "  Title: " . $product->getTitle()->getText() . "\n";
     }
+    
+    // Return true to continue processing, or false to stop
+    return true; // Returning false would stop processing after this product
 };
 
 // Options for batch processing
@@ -187,9 +190,10 @@ The streaming parser offers several advantages for large ONIX files:
 1. **Memory Efficiency**: Processes one product at a time, keeping memory usage low
 2. **Batch Processing**: Can process a subset of products (using limit and offset)
 3. **Progress Tracking**: Provides real-time feedback through the callback function
-4. **Error Handling**: Can continue processing even if some products fail to parse
-5. **Performance**: Better performance for large files, avoiding timeouts
-6. **Consistency**: Extracts the same data as the regular parser, including supplier GLN
+4. **Conditional Processing**: Can stop processing when callback returns false
+5. **Error Handling**: Can continue processing even if some products fail to parse
+6. **Performance**: Better performance for large files, avoiding timeouts
+7. **Consistency**: Extracts the same data as the regular parser, including supplier GLN
 
 See `examples/streaming.php` for a complete example of using the streaming parser.
 

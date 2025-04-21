@@ -314,7 +314,13 @@ class OnixParser
                             
                             // Call callback if provided
                             if (is_callable($options['callback'])) {
-                                call_user_func($options['callback'], $product, $processedCount, $productCount);
+                                $callbackResult = call_user_func($options['callback'], $product, $processedCount, $productCount);
+                                
+                                // If callback returns false, stop processing
+                                if ($callbackResult === false) {
+                                    $this->logger->info("Callback returned false, stopping processing at product $productCount");
+                                    break;
+                                }
                             }
                             
                             $processedCount++;

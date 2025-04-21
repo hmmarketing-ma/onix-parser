@@ -35,6 +35,11 @@ try {
         
         // Print memory usage
         echo "  Memory usage: " . round(memory_get_usage() / 1024 / 1024, 2) . " MB\n";
+        
+        // Return true to continue processing
+        // You can return false to stop processing after this product
+        // For example: return $index < 10; // Stop after processing 10 products
+        return true;
     };
     
     // Parse the ONIX file using streaming approach
