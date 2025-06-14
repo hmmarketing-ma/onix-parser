@@ -123,6 +123,31 @@ class Product
      * @var \SimpleXMLElement Original XML
      */
     private $xml;
+    
+    /**
+     * @var string Publisher name (derived from supplier or imprint)
+     */
+    private $publisherName;
+    
+    /**
+     * @var string Publication date
+     */
+    private $publicationDate;
+    
+    /**
+     * @var string Availability date
+     */
+    private $availabilityDate;
+    
+    /**
+     * @var string Announcement date
+     */
+    private $announcementDate;
+    
+    /**
+     * @var array<Contributor> Contributors (authors, editors, etc.)
+     */
+    private $contributors = [];
 
     /**
      * Get record reference
@@ -917,5 +942,127 @@ class Product
     {
         // Book forms typically start with 'B'
         return $this->productForm && (substr($this->productForm, 0, 1) === 'B' || $this->productForm === '00');
+    }
+    
+    /**
+     * Get publisher name
+     * 
+     * @return string|null
+     */
+    public function getPublisherName()
+    {
+        return $this->publisherName ?: $this->supplierName;
+    }
+
+    /**
+     * Set publisher name
+     * 
+     * @param string $publisherName
+     * @return self
+     */
+    public function setPublisherName($publisherName)
+    {
+        $this->publisherName = $publisherName;
+        return $this;
+    }
+
+    /**
+     * Get publication date
+     * 
+     * @return string|null
+     */
+    public function getPublicationDate()
+    {
+        return $this->publicationDate;
+    }
+
+    /**
+     * Set publication date
+     * 
+     * @param string $publicationDate
+     * @return self
+     */
+    public function setPublicationDate($publicationDate)
+    {
+        $this->publicationDate = $publicationDate;
+        return $this;
+    }
+
+    /**
+     * Get availability date
+     * 
+     * @return string|null
+     */
+    public function getAvailabilityDate()
+    {
+        return $this->availabilityDate;
+    }
+
+    /**
+     * Set availability date
+     * 
+     * @param string $availabilityDate
+     * @return self
+     */
+    public function setAvailabilityDate($availabilityDate)
+    {
+        $this->availabilityDate = $availabilityDate;
+        return $this;
+    }
+
+    /**
+     * Get announcement date
+     * 
+     * @return string|null
+     */
+    public function getAnnouncementDate()
+    {
+        return $this->announcementDate;
+    }
+
+    /**
+     * Set announcement date
+     * 
+     * @param string $announcementDate
+     * @return self
+     */
+    public function setAnnouncementDate($announcementDate)
+    {
+        $this->announcementDate = $announcementDate;
+        return $this;
+    }
+
+    /**
+     * Get contributors
+     * 
+     * @return array
+     */
+    public function getContributors()
+    {
+        return $this->contributors;
+    }
+
+    /**
+     * Set contributors
+     * 
+     * @param array $contributors
+     * @return self
+     */
+    public function setContributors($contributors)
+    {
+        $this->contributors = $contributors;
+        return $this;
+    }
+
+    /**
+     * Add contributor
+     * 
+     * @param mixed $contributor
+     * @return self
+     */
+    public function addContributor($contributor)
+    {
+        $this->contributors[] = $contributor;
+        return $this;
     }
 }

@@ -484,6 +484,15 @@ class OnixParser
         // Parse collections
         $this->parseCollections($importedNode, $product, $xpath);
         
+        // Parse contributors (authors, editors, etc.)
+        $this->parseContributors($importedNode, $product, $xpath);
+        
+        // Parse publisher information
+        $this->parsePublisher($importedNode, $product, $xpath);
+        
+        // Parse publication dates
+        $this->parsePublicationDates($importedNode, $product, $xpath);
+        
         // Parse supply details (availability, prices)
         $this->parseSupply($importedNode, $product, $xpath);
         
@@ -638,6 +647,15 @@ class OnixParser
 
         // Parse collections
         $this->parseCollections($productNode, $product);
+        
+        // Parse contributors (authors, editors, etc.)
+        $this->parseContributors($productNode, $product);
+        
+        // Parse publisher information
+        $this->parsePublisher($productNode, $product);
+        
+        // Parse publication dates
+        $this->parsePublicationDates($productNode, $product);
         
         // Parse supply details (availability, prices)
         $this->parseSupply($productNode, $product);
@@ -1313,5 +1331,106 @@ class OnixParser
         
         // Handle other date formats or return original if no pattern matches
         return $date;
+    }
+    
+    /**
+     * Parse contributors (authors, editors, etc.)
+     *
+     * @param \DOMNode $productNode
+     * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
+     */
+    private function parseContributors(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
+    {
+        $contributorNodes = $this->queryNodesWithContext($this->fieldMappings['contributors'], $productNode, $localXpath);
+        
+        foreach ($contributorNodes as $contributorNode) {
+            $contributor = new \ONIXParser\Model\Contributor();
+            
+            // Get role
+            $role = $this->getNodeValueWithContext($this->fieldMappings['contributor_fields']['role'], $contributorNode, $localXpath);
+            if ($role) {
+                $contributor->setRole($role);
+                // Map role code to name if needed
+                $roleName = $this->codeMaps['contributor_role'][$role] ?? '';
+                $contributor->setRoleName($roleName);
+            }
+            
+            // Get name (try different name formats)
+            $name = $this->getNodeValueWithContext($this->fieldMappings['contributor_fields']['name'], $contributorNode, $localXpath);
+            if ($name) {
+                $contributor->setName($name);
+            } else {
+                // Try corporate name
+                $corporateName = $this->getNodeValueWithContext($this->fieldMappings['contributor_fields']['corporate_name'], $contributorNode, $localXpath);
+                if ($corporateName) {
+                    $contributor->setCorporateName($corporateName);
+                } else {
+                    // Try name parts
+                    $firstName = $this->getNodeValueWithContext($this->fieldMappings['contributor_fields']['first_name'], $contributorNode, $localXpath);
+                    $lastName = $this->getNodeValueWithContext($this->fieldMappings['contributor_fields']['last_name'], $contributorNode, $localXpath);
+                    
+                    if ($firstName || $lastName) {
+                        $contributor->setNameGiven($firstName);
+                        $contributor->setNameFamily($lastName);
+                    }
+                }
+            }
+            
+            // Only add if we have meaningful contributor data
+            if ($contributor->getName() || $contributor->getCorporateName()) {
+                $product->addContributor($contributor);
+            }
+        }
+    }
+    
+    /**
+     * Parse publisher information
+     *
+     * @param \DOMNode $productNode
+     * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
+     */
+    private function parsePublisher(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
+    {
+        // Try publisher name first
+        $publisherName = $this->getNodeValueWithContext($this->fieldMappings['publisher']['publisher_name'], $productNode, $localXpath);
+        if ($publisherName) {
+            $product->setPublisherName($publisherName);
+        } else {
+            // Fallback to imprint name
+            $imprintName = $this->getNodeValueWithContext($this->fieldMappings['publisher']['imprint_name'], $productNode, $localXpath);
+            if ($imprintName) {
+                $product->setPublisherName($imprintName);
+            }
+        }
+    }
+    
+    /**
+     * Parse publication dates
+     *
+     * @param \DOMNode $productNode
+     * @param Product $product
+     * @param \DOMXPath|null $localXpath Optional local XPath object
+     */
+    private function parsePublicationDates(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
+    {
+        // Parse publication date (role = '01')
+        $publicationDate = $this->getNodeValueWithContext($this->fieldMappings['publication_dates']['publication'], $productNode, $localXpath);
+        if ($publicationDate) {
+            $product->setPublicationDate($this->formatDate($publicationDate));
+        }
+        
+        // Parse embargo date as availability date (role = '02')
+        $embargoDate = $this->getNodeValueWithContext($this->fieldMappings['publication_dates']['embargo'], $productNode, $localXpath);
+        if ($embargoDate) {
+            $product->setAvailabilityDate($this->formatDate($embargoDate));
+        }
+        
+        // Parse on sale date as announcement date
+        $onSaleDate = $this->getNodeValueWithContext($this->fieldMappings['stock']['on_sale_date'], $productNode, $localXpath);
+        if ($onSaleDate) {
+            $product->setAnnouncementDate($this->formatDate($onSaleDate));
+        }
     }
 }
