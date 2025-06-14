@@ -2,6 +2,8 @@
 
 namespace ONIXParser\Model;
 
+use ONIXParser\CodeMaps;
+
 /**
  * ONIX Price Model
  * 
@@ -270,5 +272,20 @@ class Price
     {
         $this->taxRateCode = $taxRateCode;
         return $this;
+    }
+    
+    /**
+     * Get price type name
+     * 
+     * @return string|null
+     */
+    public function getPriceTypeName()
+    {
+        if (!$this->type) {
+            return null;
+        }
+        
+        $priceTypeMap = CodeMaps::getPriceTypeMap();
+        return isset($priceTypeMap[$this->type]) ? $priceTypeMap[$this->type] : null;
     }
 }
