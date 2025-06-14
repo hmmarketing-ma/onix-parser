@@ -4,21 +4,22 @@ A modern, object-oriented PHP library for parsing ONIX (ONline Information eXcha
 
 ## Features
 
-- Full support for ONIX 3.0 XML
-- Handles both namespaced and non-namespaced XML
-- Memory-efficient streaming parser for large XML files
-- Consistent behavior between regular and streaming parsing methods
-- Comprehensive subject classification support (CLIL, THEMA, ScoLOMFR)
-- Rich support for product descriptions with HTML handling
-- Collection and series management with hierarchical relationships
-- Support for product images and other media resources
-- Supplier information extraction including GLN (Global Location Number)
-- Detailed price and availability information
-- Modular, object-oriented design
-- Comprehensive logging
-- Configurable and extensible
-- Well-documented code with type hints
-- Simple API for accessing ONIX data
+- **Full ONIX 3.0 XML Support** - Complete parsing of ONIX 3.0 namespaced and non-namespaced XML
+- **Memory-Efficient Streaming** - Stream large XML files without memory issues
+- **Rich Product Information** - Extract all product metadata including titles, descriptions, subjects
+- **Physical Product Details** - Page count, dimensions (height, width, thickness), weight with unit conversion
+- **Language Support** - Primary language detection with ISO 639 code mapping
+- **Publishing Metadata** - Publisher, imprint, country/city of publication, edition details
+- **Product Classification** - Product form, product form details with human-readable names
+- **Availability & Pricing** - Detailed availability status and comprehensive price information
+- **Subject Classification** - Full support for CLIL, THEMA, and ScoLOMFR classification schemes
+- **Images & Media** - Extract cover images and other media resources with URL validation
+- **Collections & Series** - Hierarchical collection and series relationships
+- **Supplier Information** - GLN (Global Location Number) and supplier details
+- **Code Mapping** - Extensive ONIX code lists with human-readable translations
+- **Comprehensive Logging** - Detailed logging with configurable levels
+- **Type Safety** - Well-documented code with PHP type hints
+- **Extensible Architecture** - Modular design for easy customization
 
 ## Requirements
 
@@ -136,6 +137,103 @@ try {
 ```
 
 See the examples directory for more detailed usage examples.
+
+## New Features (v1.6.0+)
+
+### Enhanced Product Information
+
+The ONIX Parser now provides access to comprehensive product metadata with human-readable translations:
+
+```php
+$product = $onix->getProducts()[0];
+
+// Physical product details
+$pageCount = $product->getPageCount();                    // 224
+$height = $product->getHeight();                          // ['value' => 155, 'unit' => 'mm', 'unit_name' => 'Millimeters']
+$width = $product->getWidth();                            // ['value' => 105, 'unit' => 'mm', 'unit_name' => 'Millimeters']  
+$thickness = $product->getThickness();                    // ['value' => 12, 'unit' => 'mm', 'unit_name' => 'Millimeters']
+$weight = $product->getWeight();                          // ['value' => 224, 'unit' => 'gr', 'unit_name' => 'Grams']
+
+// Language information
+$languageCode = $product->getLanguageCode();              // 'fra'
+$languageName = $product->getLanguageName();              // 'French'
+
+// Enhanced availability with human-readable names
+$availabilityCode = $product->getAvailabilityCode();      // '20'
+$availabilityName = $product->getAvailabilityName();      // 'Available'
+
+// Product form details
+$productForm = $product->getProductForm();                // 'BC'
+$productFormName = $product->getProductFormName();        // 'Paperback'
+$productFormDetail = $product->getProductFormDetail();    // 'A103'
+$productFormDetailName = $product->getProductFormDetailName(); // 'Trade paperback (UK mass-market paperback)'
+
+// Publishing information
+$publisher = $product->getPublisherName();                // 'Hachette Livre'
+$imprint = $product->getImprintName();                    // 'HACHETTE TOURI'
+$countryOfPublication = $product->getCountryOfPublication(); // 'FR'
+$countryName = $product->getCountryOfPublicationName();   // 'France'
+$cityOfPublication = $product->getCityOfPublication();    // 'Paris'
+
+// Edition and copyright information
+$editionNumber = $product->getEditionNumber();            // '2'
+$editionStatement = $product->getEditionStatement();      // 'Second edition'
+$copyrightYear = $product->getCopyrightYear();            // '2023'
+$firstPublicationYear = $product->getFirstPublicationYear(); // '2023'
+
+// Enhanced pricing with type names
+foreach ($product->getPrices() as $price) {
+    echo $price->getType();           // '04'
+    echo $price->getPriceTypeName();  // 'Fixed retail price including tax'
+    echo $price->getFormattedPrice(); // '29.99 EUR'
+}
+```
+
+### New Code Mappings
+
+Four new comprehensive code mapping systems have been added:
+
+```php
+use ONIXParser\CodeMaps;
+
+// Product form detail codes (List 175)
+$productFormDetailMap = CodeMaps::getProductFormDetailMap();
+// Examples: 'A101' => 'Hardcover book with dust jacket', 'A301' => 'Basic ebook'
+
+// Language codes (ISO 639)
+$languageCodeMap = CodeMaps::getLanguageCodeMap();
+// Examples: 'fra' => 'French', 'eng' => 'English', 'spa' => 'Spanish'
+
+// Country codes (ISO 3166-1)
+$countryCodeMap = CodeMaps::getCountryCodeMap();
+// Examples: 'FR' => 'France', 'US' => 'United States', 'GB' => 'United Kingdom'
+
+// Measure unit codes (List 50)
+$measureUnitMap = CodeMaps::getMeasureUnitMap();
+// Examples: 'mm' => 'Millimeters', 'cm' => 'Centimeters', 'gr' => 'Grams'
+
+// Get all code mappings at once
+$allMaps = CodeMaps::getAllMaps();
+```
+
+### Field Mappings Enhancements
+
+New XPath mappings have been added for language and publishing metadata:
+
+```php
+use ONIXParser\FieldMappings;
+
+$mappings = FieldMappings::getMappings();
+
+// Language mappings
+$languageMappings = $mappings['language'];
+// Includes: 'primary', 'code', 'role', 'nodes'
+
+// Publishing metadata mappings  
+$publishingMappings = $mappings['publishing_metadata'];
+// Includes: 'country_of_publication', 'city_of_publication', 'copyright_year', 
+//          'edition_number', 'edition_statement'
+```
 
 ## Batch Processing for Large Files
 
@@ -496,6 +594,83 @@ The parser is designed to be extensible. To add support for additional ONIX elem
 
 Developed by [Kiran Mohamed/HM Marketing]
 
+## Missing Methods & Future Enhancements
+
+While this version (1.6.0) adds comprehensive support for most commonly needed ONIX data, some methods that could be added in future releases include:
+
+### Potential Future Methods
+
+#### Contributor Details
+- `getContributorDetails()` - Enhanced contributor information with roles and biographical notes
+- `getMainAuthor()` - Primary author extraction
+- `getTranslator()` - Translator information
+
+#### Advanced Pricing
+- `getPriceByType($type)` - Get specific price by type code
+- `getLowestPrice()` - Get the lowest available price
+- `getPriceHistory()` - Price change tracking (if available in ONIX)
+
+#### Sales Information
+- `getSalesRestrictions()` - Territory and sales restrictions
+- `getSalesRights()` - Sales rights information
+- `getAudienceInformation()` - Target audience details
+
+#### Technical Details
+- `getFileFormat()` - For digital products (EPUB, PDF, etc.)
+- `getFileSize()` - Digital file size information
+- `getTechnicalProtection()` - DRM and protection information
+
+#### Extended Classification
+- `getAgeRange()` - Target age range information
+- `getReadingLevel()` - Reading difficulty level
+- `getAudience()` - Audience code (general, academic, professional, etc.)
+
+#### Related Products
+- `getRelatedProducts()` - Related product information
+- `getAlternativeFormats()` - Other formats of the same work
+- `getReplacedBy()` - Replacement product information
+
+### Requesting New Features
+
+If you need any of these methods or have other requirements, please:
+
+1. **Check the current capabilities** - The library already supports extensive ONIX data extraction
+2. **Open an issue** on GitHub describing your use case
+3. **Contribute** by implementing the feature and submitting a pull request
+
+### Current Method Coverage
+
+**✅ Fully Implemented:**
+- Basic product information (ISBN, title, publisher, dates)
+- Physical measurements (dimensions, weight, page count)
+- Language information with human-readable names
+- Availability status with translations
+- Product classification (form, form details)
+- Publishing metadata (country, city, edition, copyright)
+- Pricing with type descriptions
+- Subject classification (CLIL, THEMA, ScoLOMFR)
+- Images and media resources
+- Collections and series
+- Descriptions and content
+- Supplier information (including GLN)
+
+**🔄 Partially Implemented:**
+- Contributor information (basic roles available, could be enhanced)
+- Pricing (comprehensive but could add convenience methods)
+
+**⏳ Not Yet Implemented:**
+- Sales restrictions and rights
+- Advanced audience targeting
+- Technical details for digital products
+- Related product relationships
+- Advanced contributor biographical information
+
+## API Documentation
+
+For complete API documentation including all methods, parameters, and examples, see:
+- [API Reference](docs/API_REFERENCE.md) - Comprehensive method documentation
+- [Changelog](CHANGELOG.md) - Detailed version history and changes
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -505,3 +680,12 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+### Development Guidelines
+
+When adding new methods:
+1. **Use FieldMappings** for all XPath queries
+2. **Use CodeMaps** for human-readable translations
+3. **Add comprehensive documentation** with PHPDoc comments
+4. **Include test coverage** for new functionality
+5. **Follow existing patterns** for consistency

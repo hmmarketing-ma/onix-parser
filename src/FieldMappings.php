@@ -210,6 +210,41 @@ class FieldMappings
                 'mode' => ['./onix:ResourceMode', './ResourceMode'],
                 'url' => ['.//onix:ResourceVersion/onix:ResourceLink', './/ResourceVersion/ResourceLink'],
             ],
+            
+            // Language information
+            'language' => [
+                'nodes' => ['./onix:DescriptiveDetail/onix:Language', './DescriptiveDetail/Language'],
+                'role' => ['./onix:LanguageRole', './LanguageRole'],
+                'code' => ['./onix:LanguageCode', './LanguageCode'],
+                'primary' => [
+                    ".//onix:Language[onix:LanguageRole='01']/onix:LanguageCode",
+                    ".//Language[LanguageRole='01']/LanguageCode"
+                ],
+            ],
+            
+            // Publishing metadata
+            'publishing_metadata' => [
+                'country_of_publication' => [
+                    './onix:PublishingDetail/onix:CountryOfPublication',
+                    './PublishingDetail/CountryOfPublication'
+                ],
+                'city_of_publication' => [
+                    './onix:PublishingDetail/onix:CityOfPublication',
+                    './PublishingDetail/CityOfPublication'
+                ],
+                'copyright_year' => [
+                    './/onix:CopyrightStatement/onix:CopyrightYear',
+                    './/CopyrightStatement/CopyrightYear'
+                ],
+                'edition_number' => [
+                    './onix:DescriptiveDetail/onix:EditionNumber',
+                    './DescriptiveDetail/EditionNumber'
+                ],
+                'edition_statement' => [
+                    './onix:DescriptiveDetail/onix:EditionStatement',
+                    './DescriptiveDetail/EditionStatement'
+                ],
+            ],
         ];
     }
 }

@@ -1065,4 +1065,385 @@ class Product
         $this->contributors[] = $contributor;
         return $this;
     }
+
+    /**
+     * Get availability name using CodeMaps
+     * 
+     * @return string|null Human-readable availability name
+     */
+    public function getAvailabilityName()
+    {
+        if (!$this->availabilityCode) {
+            return null;
+        }
+        
+        $availabilityMap = \ONIXParser\CodeMaps::getAvailabilityCodeMap();
+        return $availabilityMap[$this->availabilityCode] ?? null;
+    }
+
+    /**
+     * Get page count from product extent information
+     * Uses FieldMappings for XPath queries
+     * 
+     * @return int|null Number of pages
+     */
+    public function getPageCount()
+    {
+        if (!$this->xml) {
+            return null;
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $extentPaths = $mappings['physical']['extents'];
+        
+        // Find extent nodes
+        $extents = $this->xml->xpath($extentPaths[0]) ?: $this->xml->xpath($extentPaths[1]);
+        
+        if ($extents) {
+            $typePaths = $mappings['physical']['extent_type'];
+            $valuePaths = $mappings['physical']['extent_value'];
+            
+            foreach ($extents as $extent) {
+                $type = $extent->xpath($typePaths[0]) ?: $extent->xpath($typePaths[1]);
+                $type = $type ? (string)$type[0] : null;
+                
+                // ExtentType 00 = Main content page count, 07 = Total numbered pages
+                if ($type === '00' || $type === '07') {
+                    $value = $extent->xpath($valuePaths[0]) ?: $extent->xpath($valuePaths[1]);
+                    return $value ? (int)$value[0] : null;
+                }
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get primary language code
+     * Uses FieldMappings for XPath queries
+     * 
+     * @return string|null ISO 639 language code
+     */
+    public function getLanguageCode()
+    {
+        if (!$this->xml) {
+            return null;
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        
+        // Try primary language first
+        $primaryPaths = $mappings['language']['primary'];
+        $languages = $this->xml->xpath($primaryPaths[0]) ?: $this->xml->xpath($primaryPaths[1]);
+        
+        if ($languages && !empty($languages)) {
+            return (string)$languages[0];
+        }
+        
+        // Fallback to any language code
+        $codePaths = $mappings['language']['code'];
+        $languageNodes = $this->xml->xpath($mappings['language']['nodes'][0]) ?: 
+                        $this->xml->xpath($mappings['language']['nodes'][1]);
+        
+        if ($languageNodes) {
+            foreach ($languageNodes as $node) {
+                $code = $node->xpath($codePaths[0]) ?: $node->xpath($codePaths[1]);
+                if ($code) {
+                    return (string)$code[0];
+                }
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get primary language name using CodeMaps
+     * 
+     * @return string|null Human-readable language name
+     */
+    public function getLanguageName()
+    {
+        $languageCode = $this->getLanguageCode();
+        if (!$languageCode) {
+            return null;
+        }
+        
+        $languageMap = \ONIXParser\CodeMaps::getLanguageCodeMap();
+        return $languageMap[strtolower($languageCode)] ?? $languageCode;
+    }
+
+    /**
+     * Get product form detail code
+     * Uses FieldMappings for XPath queries
+     * 
+     * @return string|null Product form detail code
+     */
+    public function getProductFormDetail()
+    {
+        if (!$this->xml) {
+            return null;
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $detailPaths = $mappings['product_form']['form_detail'];
+        
+        $details = $this->xml->xpath($detailPaths[0]) ?: $this->xml->xpath($detailPaths[1]);
+        return $details && !empty($details) ? (string)$details[0] : null;
+    }
+
+    /**
+     * Get product form detail name using CodeMaps
+     * 
+     * @return string|null Human-readable product form detail name
+     */
+    public function getProductFormDetailName()
+    {
+        $formDetail = $this->getProductFormDetail();
+        if (!$formDetail) {
+            return null;
+        }
+        
+        $detailMap = \ONIXParser\CodeMaps::getProductFormDetailMap();
+        return $detailMap[$formDetail] ?? null;
+    }
+
+    /**
+     * Get imprint name
+     * Uses FieldMappings for XPath queries
+     * 
+     * @return string|null Imprint name
+     */
+    public function getImprintName()
+    {
+        if (!$this->xml) {
+            return null;
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $imprintPaths = $mappings['publisher']['imprint_name'];
+        
+        $imprints = $this->xml->xpath($imprintPaths[0]) ?: $this->xml->xpath($imprintPaths[1]);
+        return $imprints && !empty($imprints) ? (string)$imprints[0] : null;
+    }
+
+    /**
+     * Get height measurement
+     * 
+     * @return array|null Array with 'value' and 'unit' keys
+     */
+    public function getHeight()
+    {
+        return $this->getMeasurement('01'); // Height
+    }
+
+    /**
+     * Get width measurement
+     * 
+     * @return array|null Array with 'value' and 'unit' keys
+     */
+    public function getWidth()
+    {
+        return $this->getMeasurement('02'); // Width
+    }
+
+    /**
+     * Get thickness measurement
+     * 
+     * @return array|null Array with 'value' and 'unit' keys
+     */
+    public function getThickness()
+    {
+        return $this->getMeasurement('03'); // Thickness
+    }
+
+    /**
+     * Get weight measurement
+     * 
+     * @return array|null Array with 'value' and 'unit' keys
+     */
+    public function getWeight()
+    {
+        return $this->getMeasurement('08'); // Weight
+    }
+
+    /**
+     * Get measurement by type using FieldMappings
+     * 
+     * @param string $measureType ONIX measure type code
+     * @return array|null Array with 'value', 'unit', and 'unit_name' keys
+     */
+    private function getMeasurement($measureType)
+    {
+        if (!$this->xml) {
+            return null;
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $measurePaths = $mappings['physical']['measures'];
+        
+        // Find measure nodes
+        $measures = $this->xml->xpath($measurePaths[0]) ?: $this->xml->xpath($measurePaths[1]);
+        
+        if ($measures) {
+            $typePaths = $mappings['physical']['measure_type'];
+            $valuePaths = $mappings['physical']['measure_value'];
+            $unitPaths = $mappings['physical']['measure_unit'];
+            
+            foreach ($measures as $measure) {
+                $type = $measure->xpath($typePaths[0]) ?: $measure->xpath($typePaths[1]);
+                $type = $type ? (string)$type[0] : null;
+                
+                if ($type === $measureType) {
+                    $value = $measure->xpath($valuePaths[0]) ?: $measure->xpath($valuePaths[1]);
+                    $unit = $measure->xpath($unitPaths[0]) ?: $measure->xpath($unitPaths[1]);
+                    
+                    if ($value) {
+                        $unitCode = $unit ? (string)$unit[0] : null;
+                        $unitMap = \ONIXParser\CodeMaps::getMeasureUnitMap();
+                        
+                        return [
+                            'value' => (float)$value[0],
+                            'unit' => $unitCode,
+                            'unit_name' => $unitCode ? ($unitMap[$unitCode] ?? $unitCode) : null
+                        ];
+                    }
+                }
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get country of publication
+     * Uses FieldMappings for XPath queries
+     * 
+     * @return string|null Country code
+     */
+    public function getCountryOfPublication()
+    {
+        if (!$this->xml) {
+            return null;
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $countryPaths = $mappings['publishing_metadata']['country_of_publication'];
+        
+        $countries = $this->xml->xpath($countryPaths[0]) ?: $this->xml->xpath($countryPaths[1]);
+        return $countries && !empty($countries) ? (string)$countries[0] : null;
+    }
+
+    /**
+     * Get country of publication name using CodeMaps
+     * 
+     * @return string|null Human-readable country name
+     */
+    public function getCountryOfPublicationName()
+    {
+        $countryCode = $this->getCountryOfPublication();
+        if (!$countryCode) {
+            return null;
+        }
+        
+        $countryMap = \ONIXParser\CodeMaps::getCountryCodeMap();
+        return $countryMap[$countryCode] ?? $countryCode;
+    }
+
+    /**
+     * Get city of publication
+     * Uses FieldMappings for XPath queries
+     * 
+     * @return string|null City name
+     */
+    public function getCityOfPublication()
+    {
+        if (!$this->xml) {
+            return null;
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $cityPaths = $mappings['publishing_metadata']['city_of_publication'];
+        
+        $cities = $this->xml->xpath($cityPaths[0]) ?: $this->xml->xpath($cityPaths[1]);
+        return $cities && !empty($cities) ? (string)$cities[0] : null;
+    }
+
+    /**
+     * Get copyright year
+     * Uses FieldMappings for XPath queries
+     * 
+     * @return string|null Copyright year
+     */
+    public function getCopyrightYear()
+    {
+        if (!$this->xml) {
+            return null;
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $copyrightPaths = $mappings['publishing_metadata']['copyright_year'];
+        
+        $copyrights = $this->xml->xpath($copyrightPaths[0]) ?: $this->xml->xpath($copyrightPaths[1]);
+        return $copyrights && !empty($copyrights) ? (string)$copyrights[0] : null;
+    }
+
+    /**
+     * Get first publication year
+     * Uses existing publication date functionality
+     * 
+     * @return string|null First publication year
+     */
+    public function getFirstPublicationYear()
+    {
+        $publicationDate = $this->getPublicationDate();
+        if (!$publicationDate) {
+            return null;
+        }
+        
+        // Extract year from YYYYMMDD or YYYY format
+        if (strlen($publicationDate) >= 4) {
+            return substr($publicationDate, 0, 4);
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get edition number
+     * Uses FieldMappings for XPath queries
+     * 
+     * @return string|null Edition number
+     */
+    public function getEditionNumber()
+    {
+        if (!$this->xml) {
+            return null;
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $editionPaths = $mappings['publishing_metadata']['edition_number'];
+        
+        $editions = $this->xml->xpath($editionPaths[0]) ?: $this->xml->xpath($editionPaths[1]);
+        return $editions && !empty($editions) ? (string)$editions[0] : null;
+    }
+
+    /**
+     * Get edition statement
+     * Uses FieldMappings for XPath queries
+     * 
+     * @return string|null Edition statement
+     */
+    public function getEditionStatement()
+    {
+        if (!$this->xml) {
+            return null;
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $statementPaths = $mappings['publishing_metadata']['edition_statement'];
+        
+        $statements = $this->xml->xpath($statementPaths[0]) ?: $this->xml->xpath($statementPaths[1]);
+        return $statements && !empty($statements) ? (string)$statements[0] : null;
+    }
 }

@@ -327,6 +327,137 @@ class CodeMaps
             '44' => 'Distributors\/retailers net price including tax'
         ];
     }
+
+    /**
+     * Get product form detail codes (List 175)
+     * 
+     * @return array
+     */
+    public static function getProductFormDetailMap(): array
+    {
+        return [
+            'A101' => 'Hardcover book with dust jacket',
+            'A102' => 'Hardcover book without dust jacket',
+            'A103' => 'Trade paperback (UK mass-market paperback)',
+            'A104' => 'Mass market paperback',
+            'A105' => 'Picture book',
+            'A106' => 'Board book',
+            'A107' => 'Novelty book',
+            'A108' => 'Gift book',
+            'A109' => 'Pop-up book',
+            'A110' => 'Cloth book',
+            'A111' => 'Bath book',
+            'A112' => 'Book with toy or other items',
+            'A201' => 'Audiobook',
+            'A202' => 'Enhanced audiobook',
+            'A301' => 'Basic ebook',
+            'A302' => 'Enhanced ebook',
+            'A303' => 'Fixed format ebook',
+            'A304' => 'Ebook with multimedia',
+            'A305' => 'Interactive ebook',
+        ];
+    }
+
+    /**
+     * Get language codes (ISO 639)
+     * 
+     * @return array
+     */
+    public static function getLanguageCodeMap(): array
+    {
+        return [
+            'fre' => 'French',
+            'fra' => 'French',
+            'eng' => 'English',
+            'spa' => 'Spanish',
+            'ger' => 'German',
+            'deu' => 'German',
+            'ita' => 'Italian',
+            'por' => 'Portuguese',
+            'rus' => 'Russian',
+            'jpn' => 'Japanese',
+            'chi' => 'Chinese',
+            'zho' => 'Chinese',
+            'ara' => 'Arabic',
+            'hin' => 'Hindi',
+            'ben' => 'Bengali',
+            'kor' => 'Korean',
+            'tur' => 'Turkish',
+            'vie' => 'Vietnamese',
+            'pol' => 'Polish',
+            'ukr' => 'Ukrainian',
+            'nld' => 'Dutch',
+            'swe' => 'Swedish',
+            'nor' => 'Norwegian',
+            'dan' => 'Danish',
+            'fin' => 'Finnish',
+            'heb' => 'Hebrew',
+            'tha' => 'Thai',
+            'msa' => 'Malay',
+            'ind' => 'Indonesian',
+        ];
+    }
+
+    /**
+     * Get country codes (ISO 3166-1)
+     * 
+     * @return array
+     */
+    public static function getCountryCodeMap(): array
+    {
+        return [
+            'FR' => 'France',
+            'US' => 'United States',
+            'GB' => 'United Kingdom',
+            'CA' => 'Canada',
+            'AU' => 'Australia',
+            'DE' => 'Germany',
+            'ES' => 'Spain',
+            'IT' => 'Italy',
+            'JP' => 'Japan',
+            'CN' => 'China',
+            'IN' => 'India',
+            'BR' => 'Brazil',
+            'RU' => 'Russia',
+            'MX' => 'Mexico',
+            'KR' => 'South Korea',
+            'NL' => 'Netherlands',
+            'SE' => 'Sweden',
+            'NO' => 'Norway',
+            'DK' => 'Denmark',
+            'FI' => 'Finland',
+            'PL' => 'Poland',
+            'CH' => 'Switzerland',
+            'AT' => 'Austria',
+            'BE' => 'Belgium',
+            'PT' => 'Portugal',
+            'GR' => 'Greece',
+            'TR' => 'Turkey',
+            'CZ' => 'Czech Republic',
+            'HU' => 'Hungary',
+            'IE' => 'Ireland',
+        ];
+    }
+
+    /**
+     * Get measure unit codes (List 50)
+     * 
+     * @return array
+     */
+    public static function getMeasureUnitMap(): array
+    {
+        return [
+            'mm' => 'Millimeters',
+            'cm' => 'Centimeters',
+            'in' => 'Inches',
+            'ft' => 'Feet',
+            'gr' => 'Grams',
+            'kg' => 'Kilograms',
+            'oz' => 'Ounces',
+            'lb' => 'Pounds',
+            'px' => 'Pixels',
+        ];
+    }
     
     /**
      * Get all code maps
@@ -337,6 +468,7 @@ class CodeMaps
     {
         return [
             'product_form' => self::getProductFormMap(),
+            'product_form_detail' => self::getProductFormDetailMap(),
             'notification_type' => self::getNotificationTypeMap(),
             'availability_code' => self::getAvailabilityCodeMap(),
             'contributor_role' => self::getContributorRoleMap(),
@@ -345,6 +477,9 @@ class CodeMaps
             'publishing_date_role' => self::getPublishingDateRoleMap(),
             'collection_type' => self::getCollectionTypeMap(),
             'price_type' => self::getPriceTypeMap(),
+            'language_code' => self::getLanguageCodeMap(),
+            'country_code' => self::getCountryCodeMap(),
+            'measure_unit' => self::getMeasureUnitMap(),
             // List 30: Resource content type
             'resource_content_type' => [
                 '01' => 'Front cover',
