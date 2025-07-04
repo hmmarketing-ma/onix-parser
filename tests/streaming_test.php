@@ -6,7 +6,7 @@ use ONIXParser\OnixParser;
 use ONIXParser\Logger;
 
 // Set the path to the ONIX file
-$onixFilePath = __DIR__ . '/fixtures/onix_samples/451030558.xml';
+$onixFilePath = __DIR__ . '/fixtures/onix_samples/451048018.xml';
 
 // Create a logger with INFO level to see important messages
 $logger = new Logger(Logger::INFO, 'onix_streaming_test.log');

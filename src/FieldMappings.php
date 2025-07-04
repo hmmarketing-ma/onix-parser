@@ -245,6 +245,26 @@ class FieldMappings
                     './DescriptiveDetail/EditionStatement'
                 ],
             ],
+            
+            // DILICOM compliance fields
+            'dilicom_compliance' => [
+                'product_composition' => [
+                    './onix:DescriptiveDetail/onix:ProductComposition',
+                    './DescriptiveDetail/ProductComposition'
+                ],
+                'trade_category' => [
+                    './onix:PublishingDetail/onix:SalesRights/onix:TradeCategory',
+                    './PublishingDetail/SalesRights/TradeCategory'
+                ],
+                'trade_category_alt' => [
+                    './onix:DescriptiveDetail/onix:TradeCategory',
+                    './DescriptiveDetail/TradeCategory'
+                ],
+                'edition_type' => [
+                    './onix:DescriptiveDetail/onix:EditionType',
+                    './DescriptiveDetail/EditionType'
+                ],
+            ],
         ];
     }
 }

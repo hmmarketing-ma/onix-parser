@@ -1446,4 +1446,156 @@ class Product
         $statements = $this->xml->xpath($statementPaths[0]) ?: $this->xml->xpath($statementPaths[1]);
         return $statements && !empty($statements) ? (string)$statements[0] : null;
     }
+
+    /**
+     * Get ProductComposition code for DILICOM compliance
+     * Uses FieldMappings for XPath queries
+     * 
+     * ProductComposition indicates the composition/nature of the product:
+     * - 00: Single item (default)
+     * - 10: Multiple-item retail product 
+     * - 11: Multiple-item trade-only product (PROFESSIONAL ACCESS)
+     * - 20: Multiple-component retail product
+     * - 30: Multiple-component trade-only product (PROFESSIONAL ACCESS)
+     * - 31: Trade-only, single-component product (PROFESSIONAL ACCESS)
+     * 
+     * DILICOM COMPLIANCE: Products with codes 11/20/30/31 require professional access
+     * 
+     * @return string ProductComposition code or empty string if not found
+     */
+    public function getProductComposition()
+    {
+        if (!$this->xml) {
+            return '';
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $compositionPaths = $mappings['dilicom_compliance']['product_composition'];
+        
+        $composition = $this->xml->xpath($compositionPaths[0]) ?: $this->xml->xpath($compositionPaths[1]);
+        return $composition && !empty($composition) ? (string)$composition[0] : '';
+    }
+
+    /**
+     * Get TradeCategory code for DILICOM compliance
+     * Uses FieldMappings for XPath queries
+     * 
+     * TradeCategory indicates the trade classification:
+     * - 01: Consumer/retail
+     * - 02: Children's books
+     * - 03: Young adult books  
+     * - 04: Professional/academic
+     * - 05: Educational
+     * - 06: English language teaching
+     * - 07: Distribution
+     * - 08: School books/textbooks (DILICOM COMPLIANCE)
+     * - 09: Adult education
+     * 
+     * DILICOM COMPLIANCE: Code 08 identifies school books/textbooks
+     * 
+     * @return string TradeCategory code or empty string if not found
+     */
+    public function getTradeCategory()
+    {
+        if (!$this->xml) {
+            return '';
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        
+        // Try primary location first
+        $categoryPaths = $mappings['dilicom_compliance']['trade_category'];
+        $category = $this->xml->xpath($categoryPaths[0]) ?: $this->xml->xpath($categoryPaths[1]);
+        
+        if (!$category || empty($category)) {
+            // Try alternative location
+            $altPaths = $mappings['dilicom_compliance']['trade_category_alt'];
+            $category = $this->xml->xpath($altPaths[0]) ?: $this->xml->xpath($altPaths[1]);
+        }
+        
+        return $category && !empty($category) ? (string)$category[0] : '';
+    }
+
+    /**
+     * Get EditionType code for DILICOM compliance
+     * Uses FieldMappings for XPath queries
+     * 
+     * EditionType indicates the type/purpose of the edition:
+     * - NOR: Normal edition
+     * - REV: Revised edition
+     * - ENH: Enhanced edition
+     * - ENL: Enlarged edition
+     * - EXP: Expanded edition
+     * - TCH: Teacher edition (DILICOM COMPLIANCE)
+     * - STU: Student edition
+     * - FAC: Facsimile edition
+     * - REP: Reprint edition
+     * 
+     * DILICOM COMPLIANCE: TCH indicates teacher-only access required
+     * 
+     * @return string EditionType code or empty string if not found
+     */
+    public function getEditionType()
+    {
+        if (!$this->xml) {
+            return '';
+        }
+
+        $mappings = \ONIXParser\FieldMappings::getMappings();
+        $editionPaths = $mappings['dilicom_compliance']['edition_type'];
+        
+        $editionType = $this->xml->xpath($editionPaths[0]) ?: $this->xml->xpath($editionPaths[1]);
+        return $editionType && !empty($editionType) ? (string)$editionType[0] : '';
+    }
+
+    /**
+     * Check if product requires professional access
+     * Based on ProductComposition codes 11/20/30/31
+     * 
+     * @return bool True if professional access required
+     */
+    public function requiresProfessionalAccess()
+    {
+        $composition = $this->getProductComposition();
+        return in_array($composition, ['11', '20', '30', '31']);
+    }
+
+    /**
+     * Check if product is a school book/textbook
+     * Based on TradeCategory code 08
+     * 
+     * @return bool True if school book/textbook
+     */
+    public function isSchoolBook()
+    {
+        return $this->getTradeCategory() === '08';
+    }
+
+    /**
+     * Check if product is teacher-only
+     * Based on EditionType code TCH
+     * 
+     * @return bool True if teacher-only edition
+     */
+    public function isTeacherOnly()
+    {
+        return $this->getEditionType() === 'TCH';
+    }
+
+    /**
+     * Check if product requires access controls for DILICOM compliance
+     * 
+     * Product requires access controls if it's:
+     * - Professional access (ProductComposition 11/20/30/31)
+     * - School book (TradeCategory 08)  
+     * - Teacher edition (EditionType TCH)
+     * 
+     * @return bool True if access controls required
+     */
+    public function requiresAccessControls()
+    {
+        return $this->requiresProfessionalAccess() || 
+               $this->isSchoolBook() || 
+               $this->isTeacherOnly();
+    }
 }

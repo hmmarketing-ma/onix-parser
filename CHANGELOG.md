@@ -5,6 +5,34 @@ All notable changes to the ONIX Parser library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2025-07-04
+
+### Added
+
+#### DILICOM Compliance Methods (7 total)
+**Core DILICOM Methods:**
+- `getProductComposition()` - Get ProductComposition code for professional access control (00/10/11/20/30/31)
+- `getTradeCategory()` - Get TradeCategory code for school book identification (08 for school books)
+- `getEditionType()` - Get EditionType code for teacher access control (TCH for teacher-only)
+
+**Convenience Access Control Methods:**
+- `requiresProfessionalAccess()` - Check if product requires professional access (composition 11/20/30/31)
+- `isSchoolBook()` - Check if product is a school book/textbook (category 08)
+- `isTeacherOnly()` - Check if product is teacher-only edition (type TCH)
+- `requiresAccessControls()` - Check if any access controls are required
+
+#### New FieldMappings
+- Added `dilicom_compliance` section with XPath mappings for:
+  - `product_composition` - Primary and fallback XPath for ProductComposition
+  - `trade_category` - Primary and alternative XPath for TradeCategory  
+  - `edition_type` - XPath for EditionType
+
+### Technical Details
+- Added comprehensive XPath support for both namespaced and non-namespaced ONIX XML
+- Methods follow existing library patterns with proper error handling
+- Supports DILICOM compliance requirements for French book distribution
+- Full test coverage with sample ONIX data validation
+
 ## [1.6.0] - 2025-06-14
 
 ### Added
