@@ -23,19 +23,19 @@ class OnixParser
     private $xpath;
     
     /** @var Logger */
-    private $logger;
+    protected $logger;
     
     /** @var string */
-    private $xmlPath;
+    protected $xmlPath;
     
     /** @var bool */
-    private $hasNamespace = false;
+    protected $hasNamespace = false;
     
     /** @var string */
-    private $namespaceURI = 'http://www.editeur.org/onix/3.0/reference';
+    protected $namespaceURI = 'http://www.editeur.org/onix/3.0/reference';
     
     /** @var Onix */
-    private $onix;
+    protected $onix;
     
     /** @var array Field mapping with both namespaced and non-namespaced XPaths */
     private $fieldMappings;
