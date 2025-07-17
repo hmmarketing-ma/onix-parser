@@ -293,30 +293,175 @@ class ResumableOnixParser extends OnixParser
      */
     private function continueParsingFromResumePoint(string $xmlPath): Onix
     {
-        // Implementation similar to parseFileWithCheckpoints but starting from resume point
+        // Get resume options that might contain callback
+        $options = $this->resumeOptions;
+        
         $this->xmlPath = $xmlPath;
+        
+        if (!file_exists($xmlPath)) {
+            throw new \Exception("XML file not found: $xmlPath");
+        }
         
         // Apply restored state to Onix object
         $this->currentResumePoint->getParserState()->applyToOnix($this->onix);
         
-        // Continue with XMLReader from current position
-        $reader = new \XMLReader();
+        // Get restored parser state
+        $parserState = $this->currentResumePoint->getParserState();
+        $resumedProductCount = $parserState->getProcessedProductCount();
+        $resumedProcessedCount = $parserState->getProcessedCount();
+        $resumedSkippedCount = $parserState->getSkippedCount();
         
-        // Open file and seek to resume position
-        if (!$reader->open($xmlPath)) {
-            throw new \Exception('Failed to open XML file for resume');
+        $this->logger->info("Resuming parsing from product: $resumedProductCount (processed: $resumedProcessedCount, skipped: $resumedSkippedCount)");
+        
+        // Enable user error handling
+        $previous = libxml_use_internal_errors(true);
+        
+        try {
+            // Create XMLReader instance
+            $reader = new \XMLReader();
+            
+            // Open the XML file
+            if (!$reader->open($xmlPath)) {
+                $errors = libxml_get_errors();
+                libxml_clear_errors();
+                throw new \Exception('Failed to open XML file for resume: ' . $this->formatLibXMLErrors($errors));
+            }
+            
+            // Variables to track progress (continue from checkpoint)
+            $productCount = $resumedProductCount;
+            $processedCount = $resumedProcessedCount;
+            $skippedCount = $resumedSkippedCount;
+            $headerProcessed = $parserState->isHeaderProcessed();
+            $versionDetected = $parserState->isVersionDetected();
+            
+            // Seek to resume position using position tracker
+            $this->positionTracker->seekToPosition($this->currentResumePoint->getBytePosition());
+            
+            // Continue reading from current position
+            while ($reader->read()) {
+                // Record position for important elements
+                $this->positionTracker->synchronizeWithXmlReader($reader);
+                
+                // Process only element nodes
+                if ($reader->nodeType !== \XMLReader::ELEMENT) {
+                    continue;
+                }
+                
+                // Check for namespace (might be needed if we're resuming before header)
+                if (!$headerProcessed && $reader->namespaceURI) {
+                    $this->hasNamespace = true;
+                    $this->namespaceURI = $reader->namespaceURI;
+                    $this->logger->info("XML has namespace: " . $this->namespaceURI);
+                }
+                
+                // Detect ONIX version from root element (might be needed if resuming early)
+                if (!$versionDetected && ($reader->name === 'ONIXMessage' || $reader->localName === 'ONIXMessage')) {
+                    $release = $reader->getAttribute('release');
+                    if ($release) {
+                        $this->onix->setVersion('3.' . $release);
+                    } else {
+                        $this->onix->setVersion('3.0');
+                    }
+                    $versionDetected = true;
+                }
+                
+                // Process header information (might be needed if resuming early)
+                if (!$headerProcessed && 
+                    ($reader->name === 'Header' || $reader->localName === 'Header')) {
+                    
+                    // Record position before header processing
+                    $this->positionTracker->recordPosition('header_start');
+                    
+                    $headerNode = $this->getNodeFromReader($reader);
+                    if ($headerNode) {
+                        $header = $this->parseHeaderFromNode($headerNode);
+                        $this->onix->setHeader($header);
+                        $headerProcessed = true;
+                    }
+                }
+                
+                // Process product elements
+                if ($reader->name === 'Product' || $reader->localName === 'Product') {
+                    $productCount++;
+                    
+                    // Record position before product processing
+                    $this->positionTracker->recordPosition('product_start', $productCount);
+                    
+                    // Skip products based on offset
+                    if ($productCount <= ($options['offset'] ?? 0)) {
+                        $skippedCount++;
+                        $reader->next();
+                        continue;
+                    }
+                    
+                    // Check if we've reached the limit
+                    if (($options['limit'] ?? 0) > 0 && $processedCount >= ($options['limit'] ?? 0)) {
+                        break;
+                    }
+                    
+                    // Create checkpoint if needed
+                    if ($this->shouldCreateCheckpoint($productCount)) {
+                        $this->createCheckpoint($productCount, $processedCount, $skippedCount, $headerProcessed, $versionDetected);
+                    }
+                    
+                    try {
+                        // Parse the product
+                        $productNode = $this->getNodeFromReader($reader);
+                        if ($productNode) {
+                            $product = $this->parseProductStreaming($productNode);
+                            $this->onix->setProduct($product);
+                            
+                            // Call callback if provided (CRITICAL: This enables callback execution in resume mode)
+                            if (is_callable($options['callback'] ?? null)) {
+                                $callbackResult = call_user_func($options['callback'], $product, $processedCount, $productCount);
+                                
+                                // If callback returns false, stop processing
+                                if ($callbackResult === false) {
+                                    $this->logger->info("Callback returned false, stopping resumed parsing at product $productCount");
+                                    break;
+                                }
+                            }
+                            
+                            $processedCount++;
+                            $this->sessionProductCount++;
+                            
+                            $this->logger->info("Successfully parsed product (resumed): " . $product->getRecordReference() . 
+                                            " ($processedCount of $productCount)");
+                        }
+                    } catch (\Exception $e) {
+                        $this->logger->error("Error parsing product #$productCount during resume: " . $e->getMessage());
+                        
+                        if (!($options['continue_on_error'] ?? true)) {
+                            throw $e;
+                        }
+                    }
+                }
+            }
+            
+            // Create final checkpoint if enabled
+            if ($this->checkpointsEnabled) {
+                $this->createCheckpoint($productCount, $processedCount, $skippedCount, $headerProcessed, $versionDetected, true);
+            }
+            
+            // Close the reader
+            $reader->close();
+            
+            $this->logger->info("Resumed parsing completed: $processedCount products processed, $skippedCount skipped");
+            
+            return $this->onix;
+            
+        } catch (\Exception $e) {
+            $this->logger->error("Error during resumed parsing: " . $e->getMessage());
+            throw $e;
+        } finally {
+            // Restore previous error handling state
+            libxml_use_internal_errors($previous);
+            
+            // Cleanup
+            if ($this->positionTracker) {
+                $this->positionTracker->close();
+            }
         }
-        
-        // Skip to resume position (this is a simplified approach)
-        // In a full implementation, you'd need to carefully synchronize XMLReader with the file position
-        
-        $this->logger->info("Resumed parsing from product: " . $this->currentResumePoint->getParserState()->getProcessedProductCount());
-        
-        // Continue with normal parsing logic...
-        // This would use the same parsing loop as parseFileWithCheckpoints
-        // but with adjusted counters and state
-        
-        return $this->onix;
     }
     
     /**
