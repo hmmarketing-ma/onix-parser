@@ -358,7 +358,7 @@ class OnixParser
      * @param \XMLReader $reader
      * @return \DOMNode|null
      */
-    private function getNodeFromReader(\XMLReader $reader): ?\DOMNode
+    protected function getNodeFromReader(\XMLReader $reader): ?\DOMNode
     {
         if ($reader->nodeType !== \XMLReader::ELEMENT) {
             return null;
@@ -383,7 +383,7 @@ class OnixParser
      * @param \DOMNode $headerNode
      * @return Header
      */
-    private function parseHeaderFromNode(\DOMNode $headerNode): Header
+    protected function parseHeaderFromNode(\DOMNode $headerNode): Header
     {
         $header = new Header();
         
@@ -439,7 +439,7 @@ class OnixParser
      * @param \DOMNode $productNode
      * @return Product
      */
-    private function parseProductStreaming(\DOMNode $productNode): Product
+    protected function parseProductStreaming(\DOMNode $productNode): Product
     {
         $product = new Product();
         
@@ -529,7 +529,7 @@ class OnixParser
      * @param array $errors
      * @return string
      */
-    private function formatLibXMLErrors(array $errors): string
+    protected function formatLibXMLErrors(array $errors): string
     {
         $messages = [];
         foreach ($errors as $error) {
