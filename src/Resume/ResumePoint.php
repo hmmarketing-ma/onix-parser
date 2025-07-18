@@ -135,11 +135,12 @@ class ResumePoint
     
     /**
      * Calculate MD5 hash of file for integrity checking
-     * Uses only the first portion of the file up to the resume point plus a buffer
+     * Uses a consistent portion of the file (first 8KB) regardless of byte position
      */
     private function calculateFileHash(string $filePath): string
     {
-        // For efficiency, we hash only the relevant portion of the file
+        // FIXED: Use consistent hash calculation for all validation calls
+        // Always hash the first 8KB of the file for consistency
         $handle = fopen($filePath, 'r');
         if (!$handle) {
             throw CheckpointException::createFailed("Cannot open file for hashing");
@@ -148,8 +149,8 @@ class ResumePoint
         try {
             $hash = hash_init('md5');
             
-            // Hash data up to resume point plus a buffer
-            $hashSize = min($this->bytePosition + 8192, filesize($filePath));
+            // Always hash the first 8KB for consistent validation
+            $hashSize = min(8192, filesize($filePath));
             $bytesRead = 0;
             
             while ($bytesRead < $hashSize) {
