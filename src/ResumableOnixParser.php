@@ -498,7 +498,7 @@ class ResumableOnixParser extends OnixParser
             $resumePoint = new ResumePoint(
                 $currentPosition,
                 $this->xmlPath,
-                md5_file($this->xmlPath),
+                $this->calculateConsistentFileHash($this->xmlPath),
                 filesize($this->xmlPath),
                 $xmlContext,
                 'Product', // Expected element at resume point
@@ -519,6 +519,39 @@ class ResumableOnixParser extends OnixParser
         } catch (\Exception $e) {
             $this->logger->error("Failed to create checkpoint: " . $e->getMessage());
             // Don't fail the parsing process for checkpoint errors
+        }
+    }
+    
+    /**
+     * Calculate consistent file hash (first 8KB) matching ResumePoint validation method
+     */
+    private function calculateConsistentFileHash(string $filePath): string
+    {
+        $handle = fopen($filePath, 'r');
+        if (!$handle) {
+            throw new \Exception("Cannot open file for hashing: $filePath");
+        }
+        
+        try {
+            $hash = hash_init('md5');
+            
+            // Always hash the first 8KB for consistent validation
+            $hashSize = min(8192, filesize($filePath));
+            $bytesRead = 0;
+            
+            while ($bytesRead < $hashSize) {
+                $chunkSize = min(8192, $hashSize - $bytesRead);
+                $chunk = fread($handle, $chunkSize);
+                if ($chunk === false) {
+                    break;
+                }
+                hash_update($hash, $chunk);
+                $bytesRead += strlen($chunk);
+            }
+            
+            return hash_final($hash);
+        } finally {
+            fclose($handle);
         }
     }
     
