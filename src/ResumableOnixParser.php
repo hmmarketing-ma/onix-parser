@@ -308,8 +308,8 @@ class ResumableOnixParser extends OnixParser
         // Get restored parser state
         $parserState = $this->currentResumePoint->getParserState();
         $resumedProductCount = $parserState->getProcessedProductCount();
-        $resumedProcessedCount = $parserState->getProcessedCount();
-        $resumedSkippedCount = $parserState->getSkippedCount();
+        $resumedProcessedCount = $parserState->getProcessedProductCount(); // Fixed: use correct method name
+        $resumedSkippedCount = $parserState->getSkippedProductCount(); // Fixed: use correct method name
         
         $this->logger->info("Resuming parsing from product: $resumedProductCount (processed: $resumedProcessedCount, skipped: $resumedSkippedCount)");
         
