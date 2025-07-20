@@ -603,7 +603,16 @@ class ChunkOnixParser
     private function nodeFromXml(string $xml): \DOMNode
     {
         $dom = new \DOMDocument();
-        $dom->loadXML($xml);
+        
+        // Add ONIX namespace if missing (minimal fix for extracted fragments)
+        if (strpos($xml, 'xmlns') === false && strpos($xml, '<Product>') !== false) {
+            $xml = str_replace('<Product>', '<Product xmlns="http://www.editeur.org/onix/3.0/reference">', $xml);
+        }
+        
+        if (!$dom->loadXML($xml)) {
+            throw new \Exception("Failed to parse XML fragment");
+        }
+        
         return $dom->documentElement;
     }
     
