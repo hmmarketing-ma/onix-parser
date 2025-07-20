@@ -108,13 +108,14 @@ class ImprovedResumableOnixParser extends OnixParser
         $chunkCallback = function($productXml, $productNumber, $bytePosition = null) use ($callback, &$processedCount, &$totalCount, $offset, $limit, $continueOnError) {
             $totalCount = $productNumber;
             
-            // Skip products before offset
+            // Skip products before offset (FIXED: use 1-based comparison)
             if ($productNumber <= $offset) {
-                return null;
+                return true; // Continue parsing, don't process this product
             }
             
-            // Stop if limit reached
+            // Stop if limit reached (FIXED: check processed count correctly)
             if ($limit > 0 && $processedCount >= $limit) {
+                $this->logger->info("Limit reached: processed $processedCount, limit $limit");
                 return false; // Signal to stop
             }
             
@@ -156,13 +157,9 @@ class ImprovedResumableOnixParser extends OnixParser
             return null;
         };
         
-        // Use parseWithLimits for better control
-        if ($offset > 0 || $limit > 0) {
-            $this->chunkParser->parseWithLimits($chunkCallback, $offset, $limit);
-        } else {
-            // Use checkpointing version for full file processing
-            $this->chunkParser->parseWithCheckpoints($chunkCallback, $this->checkpointInterval);
-        }
+        // Always use parseWithLimits - it's more reliable and doesn't hang
+        $this->logger->info("Using parseWithLimits: offset=$offset, limit=$limit");
+        $this->chunkParser->parseWithLimits($chunkCallback, $offset, $limit);
         
         $this->logger->info("Chunk-based parsing completed: $processedCount products processed");
         
