@@ -210,6 +210,12 @@ class ChunkOnixParser
                         $processedProducts[] = $result;
                         $processedCount++;
                         
+                        // Check if callback wants to stop processing
+                        if ($result === false) {
+                            $this->logger->info("Callback requested early termination at product #$totalProductCount");
+                            break 2; // Break both loops
+                        }
+                        
                         if ($processedCount % 100 === 0) {
                             $elapsed = round(microtime(true) - $startTime, 2);
                             $rate = round($processedCount / $elapsed);
@@ -319,6 +325,12 @@ class ChunkOnixParser
                         $result = call_user_func($callback, $productXml, $totalProductCount, $bytePosition);
                         $processedProducts[] = $result;
                         $processedCount++;
+                        
+                        // Check if callback wants to stop processing
+                        if ($result === false) {
+                            $this->logger->info("Callback requested early termination at product #$totalProductCount");
+                            break 2; // Break both loops
+                        }
                         
                     } catch (\Exception $e) {
                         $this->logger->error("Error processing product #$totalProductCount: " . $e->getMessage());
