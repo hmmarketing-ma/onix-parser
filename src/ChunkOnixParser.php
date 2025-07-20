@@ -1,0 +1,399 @@
+<?php
+
+namespace ONIXParser;
+
+/**
+ * Chunk-based ONIX Parser
+ * 
+ * Processes ONIX files in small chunks with exact byte position tracking
+ * Perfect for large files (1GB+) with low memory usage and true resumable parsing
+ */
+class ChunkOnixParser
+{
+    /** @var string */
+    private $filePath;
+    
+    /** @var string */
+    private $checkpointFile;
+    
+    /** @var Logger */
+    private $logger;
+    
+    /** @var int */
+    private $chunkSize = 512 * 1024; // 512KB chunks
+    
+    /** @var resource */
+    private $fileHandle;
+    
+    /** @var int */
+    private $fileSize;
+    
+    public function __construct(string $filePath, Logger $logger = null)
+    {
+        $this->filePath = $filePath;
+        $this->checkpointFile = $filePath . '.chunk_checkpoint';
+        $this->logger = $logger ?: new Logger();
+        $this->fileSize = filesize($filePath);
+        
+        if (!file_exists($filePath)) {
+            throw new \Exception("File not found: $filePath");
+        }
+    }
+    
+    /**
+     * Parse ONIX file with chunk-based processing and automatic checkpoints
+     */
+    public function parseWithCheckpoints(callable $callback, int $checkpointInterval = 1000): array
+    {
+        $this->logger->info("Starting chunk-based ONIX parsing: " . basename($this->filePath));
+        $this->logger->info("File size: " . number_format($this->fileSize) . " bytes, Chunk size: " . number_format($this->chunkSize) . " bytes");
+        
+        // Load checkpoint
+        $checkpoint = $this->loadCheckpoint();
+        $startPosition = $checkpoint['position'] ?? 0;
+        $productCount = $checkpoint['count'] ?? 0;
+        
+        $this->logger->info("Resume from position: " . number_format($startPosition) . " bytes, product: $productCount");
+        
+        $this->fileHandle = fopen($this->filePath, 'rb');
+        if (!$this->fileHandle) {
+            throw new \Exception("Cannot open file: {$this->filePath}");
+        }
+        
+        fseek($this->fileHandle, $startPosition);
+        
+        $buffer = '';
+        $processedProducts = [];
+        $startTime = microtime(true);
+        
+        try {
+            while (!feof($this->fileHandle)) {
+                $chunk = fread($this->fileHandle, $this->chunkSize);
+                if ($chunk === false) {
+                    break;
+                }
+                
+                $buffer .= $chunk;
+                $currentPosition = ftell($this->fileHandle);
+                
+                // Process complete products in buffer
+                $lastEndPos = 0;
+                while (($startPos = strpos($buffer, '<Product', $lastEndPos)) !== false) {
+                    // Find matching closing tag
+                    $endPos = $this->findClosingProductTag($buffer, $startPos);
+                    
+                    if ($endPos === false) {
+                        // Incomplete product, need more data
+                        break;
+                    }
+                    
+                    $productXml = substr($buffer, $startPos, $endPos - $startPos + 10); // +10 for </Product>
+                    
+                    try {
+                        $result = call_user_func($callback, $productXml, $productCount);
+                        $processedProducts[] = $result;
+                        $productCount++;
+                        
+                        // Save checkpoint
+                        if ($productCount % $checkpointInterval === 0) {
+                            $checkpointPos = $currentPosition - strlen($buffer) + $endPos + 10;
+                            $this->saveCheckpoint($checkpointPos, $productCount);
+                            
+                            $elapsed = round(microtime(true) - $startTime, 2);
+                            $progress = round(($checkpointPos / $this->fileSize) * 100, 2);
+                            $rate = round($productCount / $elapsed);
+                            
+                            $this->logger->info("Checkpoint saved at product {$productCount} - Progress: {$progress}% ({$rate} products/sec)");
+                        }
+                        
+                        if ($productCount % 500 === 0) {
+                            $memoryMB = round(memory_get_usage() / 1024 / 1024, 2);
+                            $this->logger->debug("Processed $productCount products - Memory: {$memoryMB}MB");
+                        }
+                        
+                    } catch (\Exception $e) {
+                        $this->logger->error("Error processing product #$productCount: " . $e->getMessage());
+                        throw $e;
+                    }
+                    
+                    $lastEndPos = $endPos + 10;
+                }
+                
+                // Keep unprocessed part of buffer
+                if ($lastEndPos > 0) {
+                    $buffer = substr($buffer, $lastEndPos);
+                }
+                
+                // Prevent buffer from growing too large
+                if (strlen($buffer) > $this->chunkSize * 2) {
+                    $keepSize = $this->chunkSize;
+                    $buffer = substr($buffer, -$keepSize);
+                }
+            }
+            
+        } finally {
+            fclose($this->fileHandle);
+        }
+        
+        // Clear checkpoint on completion
+        if (file_exists($this->checkpointFile)) {
+            unlink($this->checkpointFile);
+        }
+        
+        $totalTime = round(microtime(true) - $startTime, 2);
+        $avgRate = round($productCount / $totalTime);
+        $this->logger->info("Chunk parsing completed: $productCount products in {$totalTime}s (avg: {$avgRate} products/sec)");
+        
+        return $processedProducts;
+    }
+    
+    /**
+     * Parse with offset and limit for batch processing
+     */
+    public function parseWithLimits(callable $callback, int $offset = 0, int $limit = 0): array
+    {
+        $this->logger->info("Chunk parsing with offset: $offset, limit: $limit");
+        
+        $this->fileHandle = fopen($this->filePath, 'rb');
+        if (!$this->fileHandle) {
+            throw new \Exception("Cannot open file: {$this->filePath}");
+        }
+        
+        $buffer = '';
+        $processedProducts = [];
+        $totalProductCount = 0;
+        $processedCount = 0;
+        $startTime = microtime(true);
+        
+        try {
+            while (!feof($this->fileHandle) && ($limit == 0 || $processedCount < $limit)) {
+                $chunk = fread($this->fileHandle, $this->chunkSize);
+                if ($chunk === false) {
+                    break;
+                }
+                
+                $buffer .= $chunk;
+                $currentPosition = ftell($this->fileHandle);
+                
+                // Process complete products in buffer
+                $lastEndPos = 0;
+                while (($startPos = strpos($buffer, '<Product', $lastEndPos)) !== false) {
+                    $endPos = $this->findClosingProductTag($buffer, $startPos);
+                    
+                    if ($endPos === false) {
+                        break; // Need more data
+                    }
+                    
+                    $totalProductCount++;
+                    $productXml = substr($buffer, $startPos, $endPos - $startPos + 10);
+                    
+                    // Skip products before offset
+                    if ($totalProductCount <= $offset) {
+                        $lastEndPos = $endPos + 10;
+                        continue;
+                    }
+                    
+                    // Stop if limit reached
+                    if ($limit > 0 && $processedCount >= $limit) {
+                        break 2; // Break both loops
+                    }
+                    
+                    try {
+                        $bytePosition = $currentPosition - strlen($buffer) + $startPos;
+                        $result = call_user_func($callback, $productXml, $totalProductCount, $bytePosition);
+                        $processedProducts[] = $result;
+                        $processedCount++;
+                        
+                        if ($processedCount % 100 === 0) {
+                            $elapsed = round(microtime(true) - $startTime, 2);
+                            $rate = round($processedCount / $elapsed);
+                            $this->logger->info("Processed $processedCount products (current: #$totalProductCount) - {$rate} products/sec");
+                        }
+                        
+                    } catch (\Exception $e) {
+                        $this->logger->error("Error processing product #$totalProductCount: " . $e->getMessage());
+                        throw $e;
+                    }
+                    
+                    $lastEndPos = $endPos + 10;
+                }
+                
+                // Keep unprocessed part of buffer
+                if ($lastEndPos > 0) {
+                    $buffer = substr($buffer, $lastEndPos);
+                }
+            }
+            
+        } finally {
+            fclose($this->fileHandle);
+        }
+        
+        $totalTime = round(microtime(true) - $startTime, 2);
+        $this->logger->info("Batch parsing completed: $processedCount products processed in {$totalTime}s");
+        
+        return $processedProducts;
+    }
+    
+    /**
+     * Find the closing </Product> tag matching the opening tag
+     */
+    private function findClosingProductTag(string $buffer, int $startPos): int|false
+    {
+        $depth = 0;
+        $pos = $startPos;
+        $len = strlen($buffer);
+        
+        // Handle both <Product> and namespaced <x:Product> tags
+        $inTag = false;
+        $tagContent = '';
+        
+        while ($pos < $len) {
+            $char = $buffer[$pos];
+            
+            if ($char === '<') {
+                $inTag = true;
+                $tagContent = '<';
+            } elseif ($char === '>' && $inTag) {
+                $tagContent .= '>';
+                $inTag = false;
+                
+                // Check if this is a Product tag
+                if (preg_match('/<(\w*:)?Product\b/i', $tagContent)) {
+                    $depth++;
+                } elseif (preg_match('/<\/(\w*:)?Product>/i', $tagContent)) {
+                    $depth--;
+                    if ($depth === 0) {
+                        return $pos;
+                    }
+                }
+                
+                $tagContent = '';
+            } elseif ($inTag) {
+                $tagContent .= $char;
+            }
+            
+            $pos++;
+        }
+        
+        return false; // No complete closing tag found
+    }
+    
+    /**
+     * Get total product count (approximate, scans in chunks)
+     */
+    public function getProductCount(): int
+    {
+        $this->logger->info("Counting products in file...");
+        
+        $handle = fopen($this->filePath, 'rb');
+        if (!$handle) {
+            throw new \Exception("Cannot open file: {$this->filePath}");
+        }
+        
+        $productCount = 0;
+        $buffer = '';
+        
+        try {
+            while (!feof($handle)) {
+                $chunk = fread($handle, $this->chunkSize);
+                if ($chunk === false) {
+                    break;
+                }
+                
+                $buffer .= $chunk;
+                
+                // Count <Product> opening tags
+                $count = preg_match_all('/<(\w*:)?Product\b/i', $buffer);
+                $productCount += $count;
+                
+                // Keep only the last part of buffer to avoid double-counting
+                if (strlen($buffer) > $this->chunkSize) {
+                    $buffer = substr($buffer, -1024); // Keep last 1KB
+                }
+            }
+        } finally {
+            fclose($handle);
+        }
+        
+        $this->logger->info("Found approximately $productCount products");
+        return $productCount;
+    }
+    
+    private function saveCheckpoint(int $position, int $count): void
+    {
+        $checkpoint = [
+            'position' => $position,
+            'count' => $count,
+            'timestamp' => time(),
+            'file_size' => $this->fileSize,
+            'file_hash' => md5_file($this->filePath),
+            'chunk_size' => $this->chunkSize
+        ];
+        
+        file_put_contents($this->checkpointFile, json_encode($checkpoint, JSON_PRETTY_PRINT));
+    }
+    
+    private function loadCheckpoint(): ?array
+    {
+        if (!file_exists($this->checkpointFile)) {
+            return null;
+        }
+        
+        $checkpoint = json_decode(file_get_contents($this->checkpointFile), true);
+        
+        // Validate checkpoint is still valid
+        if ($checkpoint && isset($checkpoint['file_hash'])) {
+            $currentHash = md5_file($this->filePath);
+            if ($checkpoint['file_hash'] !== $currentHash) {
+                $this->logger->warning("Checkpoint file hash mismatch - file may have changed, starting fresh");
+                unlink($this->checkpointFile);
+                return null;
+            }
+        }
+        
+        return $checkpoint;
+    }
+    
+    /**
+     * Clear any existing checkpoint
+     */
+    public function clearCheckpoint(): void
+    {
+        if (file_exists($this->checkpointFile)) {
+            unlink($this->checkpointFile);
+        }
+    }
+    
+    /**
+     * Get checkpoint information
+     */
+    public function getCheckpointInfo(): ?array
+    {
+        return $this->loadCheckpoint();
+    }
+    
+    /**
+     * Set chunk size (for performance tuning)
+     */
+    public function setChunkSize(int $bytes): void
+    {
+        $this->chunkSize = $bytes;
+        $this->logger->info("Chunk size set to: " . number_format($bytes) . " bytes");
+    }
+    
+    /**
+     * Get parsing statistics
+     */
+    public function getStats(): array
+    {
+        $checkpoint = $this->getCheckpointInfo();
+        
+        return [
+            'file_path' => $this->filePath,
+            'file_size' => $this->fileSize,
+            'chunk_size' => $this->chunkSize,
+            'has_checkpoint' => $checkpoint !== null,
+            'checkpoint_info' => $checkpoint
+        ];
+    }
+}
