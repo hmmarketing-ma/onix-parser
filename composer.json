@@ -1,7 +1,7 @@
 {
     "name": "hm-marketing/onix-parser",
     "description": "A modern PHP library for parsing ONIX (ONline Information eXchange) XML files",
-    "version": "1.9.0",
+    "version": "1.8.6",
     "type": "library",
     "license": "MIT",
     "authors": [
