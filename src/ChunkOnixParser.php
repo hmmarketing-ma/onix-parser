@@ -91,7 +91,7 @@ class ChunkOnixParser
                         break;
                     }
                     
-                    $productXml = substr($buffer, $startPos, $endPos - $startPos + 10); // +10 for </Product>
+                    $productXml = substr($buffer, $startPos, $endPos - $startPos + 1); // +1 to include the '>' character
                     
                     try {
                         // Convert XML to Product object using OnixParser  
@@ -103,7 +103,7 @@ class ChunkOnixParser
                         
                         // Save checkpoint
                         if ($productCount % $checkpointInterval === 0) {
-                            $checkpointPos = $currentPosition - strlen($buffer) + $endPos + 10;
+                            $checkpointPos = $currentPosition - strlen($buffer) + $endPos + 1;
                             $this->saveCheckpoint($checkpointPos, $productCount);
                             
                             $elapsed = round(microtime(true) - $startTime, 2);
@@ -198,11 +198,11 @@ class ChunkOnixParser
                     }
                     
                     $totalProductCount++;
-                    $productXml = substr($buffer, $startPos, $endPos - $startPos + 10);
+                    $productXml = substr($buffer, $startPos, $endPos - $startPos + 1);
                     
                     // Skip products before offset
                     if ($totalProductCount <= $offset) {
-                        $lastEndPos = $endPos + 10;
+                        $lastEndPos = $endPos + 1;
                         continue;
                     }
                     
@@ -312,7 +312,7 @@ class ChunkOnixParser
                     }
                     
                     $totalProductCount++;
-                    $productXml = substr($buffer, $startPos, $endPos - $startPos + 10);
+                    $productXml = substr($buffer, $startPos, $endPos - $startPos + 1);
                     
                     // Cache position every 100 products
                     if ($totalProductCount % 100 === 0) {
@@ -322,7 +322,7 @@ class ChunkOnixParser
                     
                     // Skip products before offset
                     if ($totalProductCount <= $offset) {
-                        $lastEndPos = $endPos + 10;
+                        $lastEndPos = $endPos + 1;
                         continue;
                     }
                     
@@ -463,7 +463,7 @@ class ChunkOnixParser
                 } elseif (preg_match('/^<\/(\w*:)?Product>$/i', $tagContent)) {
                     $depth--;
                     if ($depth === 0) {
-                        return $pos;
+                        return $pos; // Return position of '>' in </Product>
                     }
                 }
                 
