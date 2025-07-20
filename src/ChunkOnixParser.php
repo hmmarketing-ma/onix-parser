@@ -19,6 +19,9 @@ class ChunkOnixParser
     /** @var Logger */
     private $logger;
     
+    /** @var OnixParser */
+    private $parser;
+    
     /** @var int */
     private $chunkSize = 512 * 1024; // 512KB chunks
     
@@ -28,10 +31,11 @@ class ChunkOnixParser
     /** @var int */
     private $fileSize;
     
-    public function __construct(string $filePath, Logger $logger = null)
+    public function __construct(string $filePath, OnixParser $parser = null, Logger $logger = null)
     {
         $this->filePath = $filePath;
         $this->checkpointFile = $filePath . '.chunk_checkpoint';
+        $this->parser = $parser ?: new OnixParser($logger);
         $this->logger = $logger ?: new Logger();
         $this->fileSize = filesize($filePath);
         
@@ -90,7 +94,10 @@ class ChunkOnixParser
                     $productXml = substr($buffer, $startPos, $endPos - $startPos + 10); // +10 for </Product>
                     
                     try {
-                        $result = call_user_func($callback, $productXml, $productCount);
+                        // Convert XML to Product object using OnixParser  
+                        $product = $this->parser->parseProductStreaming($this->nodeFromXml($productXml));
+                        
+                        $result = call_user_func($callback, $product, $productCount);
                         $processedProducts[] = $result;
                         $productCount++;
                         
@@ -206,7 +213,11 @@ class ChunkOnixParser
                     
                     try {
                         $bytePosition = $currentPosition - strlen($buffer) + $startPos;
-                        $result = call_user_func($callback, $productXml, $totalProductCount, $bytePosition);
+                        
+                        // Convert XML to Product object using OnixParser
+                        $product = $this->parser->parseProductStreaming($this->nodeFromXml($productXml));
+                        
+                        $result = call_user_func($callback, $product, $totalProductCount, $bytePosition);
                         $processedProducts[] = $result;
                         $processedCount++;
                         
@@ -322,7 +333,11 @@ class ChunkOnixParser
                     
                     try {
                         $bytePosition = $currentPosition - strlen($buffer) + $startPos;
-                        $result = call_user_func($callback, $productXml, $totalProductCount, $bytePosition);
+                        
+                        // Convert XML to Product object using OnixParser
+                        $product = $this->parser->parseProductStreaming($this->nodeFromXml($productXml));
+                        
+                        $result = call_user_func($callback, $product, $totalProductCount, $bytePosition);
                         $processedProducts[] = $result;
                         $processedCount++;
                         
@@ -580,5 +595,32 @@ class ChunkOnixParser
             'has_checkpoint' => $checkpoint !== null,
             'checkpoint_info' => $checkpoint
         ];
+    }
+    
+    /**
+     * Convert XML string to DOMNode for OnixParser
+     */
+    private function nodeFromXml(string $xml): \DOMNode
+    {
+        $dom = new \DOMDocument();
+        $dom->loadXML($xml);
+        return $dom->documentElement;
+    }
+    
+    /**
+     * Convenience wrapper returning a ready Onix object (like parseFileStreaming)
+     */
+    public function parseIntoOnix(int $offset = 0, int $limit = 0): \ONIXParser\Model\Onix
+    {
+        $onix = new \ONIXParser\Model\Onix();
+        $this->parseWithLimits(
+            function (\ONIXParser\Model\Product $product) use ($onix) { 
+                $onix->setProduct($product); 
+                return $product;
+            },
+            $offset,
+            $limit
+        );
+        return $onix;
     }
 }
