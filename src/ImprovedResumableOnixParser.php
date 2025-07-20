@@ -195,13 +195,52 @@ class ImprovedResumableOnixParser extends OnixParser
         
         $wrappedXml .= $productXml . '</ONIXMessage>';
         
-        // Parse with DOMDocument
+        // Parse with DOMDocument and better error handling
         $dom = new \DOMDocument();
-        $loaded = $dom->loadXML($wrappedXml);
         
-        if (!$loaded) {
-            $this->logger->warning("Failed to parse product XML");
-            return null;
+        // Suppress XML parsing errors and handle them manually
+        libxml_use_internal_errors(true);
+        $loaded = $dom->loadXML($wrappedXml);
+        $xmlErrors = libxml_get_errors();
+        libxml_clear_errors();
+        libxml_use_internal_errors(false);
+        
+        if (!$loaded || !empty($xmlErrors)) {
+            // Log detailed XML error information for debugging
+            if (!empty($xmlErrors)) {
+                $errorDetails = [];
+                foreach ($xmlErrors as $error) {
+                    $errorDetails[] = "Line {$error->line}: {$error->message}";
+                }
+                $this->logger->debug("XML parsing errors: " . implode('; ', $errorDetails));
+            }
+            
+            // Try to clean up the XML and retry
+            $cleanedXml = $this->cleanupProductXml($productXml);
+            if ($cleanedXml !== $productXml) {
+                // Rebuild wrapped XML with cleaned content
+                $wrappedXml = '';
+                if ($hasNamespace) {
+                    $wrappedXml .= '<ONIXMessage xmlns="http://www.editeur.org/onix/3.0/reference">';
+                } else {
+                    $wrappedXml .= '<ONIXMessage>';
+                }
+                $wrappedXml .= $cleanedXml . '</ONIXMessage>';
+                
+                libxml_use_internal_errors(true);
+                $loaded = $dom->loadXML($wrappedXml);
+                $xmlErrors = libxml_get_errors();
+                libxml_clear_errors();
+                libxml_use_internal_errors(false);
+                
+                if (!$loaded || !empty($xmlErrors)) {
+                    $this->logger->warning("Failed to parse product XML even after cleanup");
+                    return null;
+                }
+            } else {
+                $this->logger->warning("Failed to parse product XML");
+                return null;
+            }
         }
         
         $xpath = new \DOMXPath($dom);
@@ -345,6 +384,38 @@ class ImprovedResumableOnixParser extends OnixParser
     private function calculateFileHash(string $filePath): string
     {
         return md5_file($filePath);
+    }
+    
+    /**
+     * Clean up product XML to fix common parsing issues
+     */
+    private function cleanupProductXml(string $productXml): string
+    {
+        // Remove any XML declaration if present (shouldn't be in fragments)
+        $productXml = preg_replace('/<\?xml[^>]*\?>\s*/', '', $productXml);
+        
+        // Ensure the XML starts with <Product and ends with </Product>
+        $productXml = trim($productXml);
+        
+        // Fix unclosed Product tags or attributes
+        if (preg_match('/^<Product[^>]*$/', $productXml)) {
+            // Product tag is not properly closed, likely a fragment
+            return ''; // Skip this malformed fragment
+        }
+        
+        // Remove any trailing incomplete tags
+        $productXml = preg_replace('/<[^>]*$/', '', $productXml);
+        
+        // Ensure it ends with </Product>
+        if (!preg_match('/<\/Product>\s*$/', $productXml)) {
+            // Try to find the last complete tag and truncate there
+            if (preg_match_all('/<\/[^>]+>/', $productXml, $matches, PREG_OFFSET_CAPTURE)) {
+                $lastMatch = end($matches[0]);
+                $productXml = substr($productXml, 0, $lastMatch[1] + strlen($lastMatch[0]));
+            }
+        }
+        
+        return $productXml;
     }
     
     /**
