@@ -439,7 +439,7 @@ class OnixParser
      * @param \DOMNode $productNode
      * @return Product
      */
-    protected function parseProductStreaming(\DOMNode $productNode): Product
+    public function parseProductStreaming(\DOMNode $productNode): Product
     {
         $product = new Product();
         
