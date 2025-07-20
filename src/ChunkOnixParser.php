@@ -78,7 +78,7 @@ class ChunkOnixParser
                 
                 // Process complete products in buffer
                 $lastEndPos = 0;
-                while (($startPos = strpos($buffer, '<Product', $lastEndPos)) !== false) {
+                while (($startPos = $this->findNextProductTag($buffer, $lastEndPos)) !== false) {
                     // Find matching closing tag
                     $endPos = $this->findClosingProductTag($buffer, $startPos);
                     
@@ -183,7 +183,7 @@ class ChunkOnixParser
                 
                 // Process complete products in buffer
                 $lastEndPos = 0;
-                while (($startPos = strpos($buffer, '<Product', $lastEndPos)) !== false) {
+                while (($startPos = $this->findNextProductTag($buffer, $lastEndPos)) !== false) {
                     $endPos = $this->findClosingProductTag($buffer, $startPos);
                     
                     if ($endPos === false) {
@@ -293,7 +293,7 @@ class ChunkOnixParser
                 
                 // Process complete products in buffer
                 $lastEndPos = 0;
-                while (($startPos = strpos($buffer, '<Product', $lastEndPos)) !== false) {
+                while (($startPos = $this->findNextProductTag($buffer, $lastEndPos)) !== false) {
                     $endPos = $this->findClosingProductTag($buffer, $startPos);
                     
                     if ($endPos === false) {
@@ -391,6 +391,35 @@ class ChunkOnixParser
     }
     
     /**
+     * Find the next exact <Product> tag (not ProductIdentifier, ProductComposition, etc.)
+     */
+    private function findNextProductTag(string $buffer, int $startPos): int|false
+    {
+        $pos = $startPos;
+        $len = strlen($buffer);
+        
+        while ($pos < $len) {
+            $productPos = strpos($buffer, '<Product', $pos);
+            if ($productPos === false) {
+                return false;
+            }
+            
+            // Check if this is an exact Product tag
+            $afterProduct = $productPos + 8; // strlen('<Product')
+            if ($afterProduct < $len) {
+                $nextChar = $buffer[$afterProduct];
+                if ($nextChar === '>' || $nextChar === ' ' || $nextChar === "\t" || $nextChar === "\n") {
+                    return $productPos;
+                }
+            }
+            
+            $pos = $productPos + 1;
+        }
+        
+        return false;
+    }
+    
+    /**
      * Find the closing </Product> tag matching the opening tag
      */
     private function findClosingProductTag(string $buffer, int $startPos): int|false
@@ -413,10 +442,10 @@ class ChunkOnixParser
                 $tagContent .= '>';
                 $inTag = false;
                 
-                // Check if this is a Product tag
-                if (preg_match('/<(\w*:)?Product\b/i', $tagContent)) {
+                // Check if this is a Product tag (exact match, not ProductIdentifier etc.)
+                if (preg_match('/^<(\w*:)?Product(\s|>)/i', $tagContent)) {
                     $depth++;
-                } elseif (preg_match('/<\/(\w*:)?Product>/i', $tagContent)) {
+                } elseif (preg_match('/^<\/(\w*:)?Product>$/i', $tagContent)) {
                     $depth--;
                     if ($depth === 0) {
                         return $pos;
