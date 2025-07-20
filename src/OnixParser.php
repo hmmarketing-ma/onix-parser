@@ -451,9 +451,13 @@ class OnixParser
         // Create a new XPath object for this document
         $xpath = new \DOMXPath($dom);
         
-        // Register namespace if needed
-        if ($this->hasNamespace) {
-            $xpath->registerNamespace('onix', $this->namespaceURI);
+        // Auto-detect namespace in this fragment (for ChunkOnixParser compatibility)
+        $fragmentHasNamespace = !empty($importedNode->namespaceURI);
+        $fragmentNamespaceURI = $fragmentHasNamespace ? $importedNode->namespaceURI : $this->namespaceURI;
+        
+        // Register namespace if needed (either global or fragment-specific)
+        if ($this->hasNamespace || $fragmentHasNamespace) {
+            $xpath->registerNamespace('onix', $fragmentNamespaceURI);
         }
         
         // Set record reference
