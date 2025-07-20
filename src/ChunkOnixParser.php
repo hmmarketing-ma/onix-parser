@@ -154,6 +154,12 @@ class ChunkOnixParser
     {
         $this->logger->info("Chunk parsing with offset: $offset, limit: $limit");
         
+        // For small offsets (< 50), use sequential processing 
+        // For larger offsets, use position cache to seek efficiently
+        if ($offset > 50) {
+            return $this->parseWithSeek($callback, $offset, $limit);
+        }
+        
         $this->fileHandle = fopen($this->filePath, 'rb');
         if (!$this->fileHandle) {
             throw new \Exception("Cannot open file: {$this->filePath}");
@@ -232,6 +238,144 @@ class ChunkOnixParser
         $this->logger->info("Batch parsing completed: $processedCount products processed in {$totalTime}s");
         
         return $processedProducts;
+    }
+    
+    /**
+     * Optimized parsing for large offsets using position cache
+     */
+    private function parseWithSeek(callable $callback, int $offset, int $limit): array
+    {
+        $positionCacheFile = $this->filePath . '.position_cache';
+        $positionCache = $this->loadPositionCache($positionCacheFile);
+        
+        // Find the best starting position from cache
+        $startPosition = 0;
+        $startProductCount = 0;
+        
+        foreach ($positionCache as $productNum => $position) {
+            if ($productNum <= $offset && $productNum > $startProductCount) {
+                $startPosition = $position;
+                $startProductCount = $productNum;
+            }
+        }
+        
+        $this->logger->info("Seeking to byte position $startPosition (product ~$startProductCount) for offset $offset");
+        
+        $this->fileHandle = fopen($this->filePath, 'rb');
+        if (!$this->fileHandle) {
+            throw new \Exception("Cannot open file: {$this->filePath}");
+        }
+        
+        // Seek to approximately the right position
+        fseek($this->fileHandle, $startPosition);
+        
+        $buffer = '';
+        $processedProducts = [];
+        $totalProductCount = $startProductCount;
+        $processedCount = 0;
+        $startTime = microtime(true);
+        
+        try {
+            while (!feof($this->fileHandle) && ($limit == 0 || $processedCount < $limit)) {
+                $chunk = fread($this->fileHandle, $this->chunkSize);
+                if ($chunk === false) {
+                    break;
+                }
+                
+                $buffer .= $chunk;
+                $currentPosition = ftell($this->fileHandle);
+                
+                // Process complete products in buffer
+                $lastEndPos = 0;
+                while (($startPos = strpos($buffer, '<Product', $lastEndPos)) !== false) {
+                    $endPos = $this->findClosingProductTag($buffer, $startPos);
+                    
+                    if ($endPos === false) {
+                        break; // Need more data
+                    }
+                    
+                    $totalProductCount++;
+                    $productXml = substr($buffer, $startPos, $endPos - $startPos + 10);
+                    
+                    // Cache position every 100 products
+                    if ($totalProductCount % 100 === 0) {
+                        $bytePos = $currentPosition - strlen($buffer) + $startPos;
+                        $positionCache[$totalProductCount] = $bytePos;
+                    }
+                    
+                    // Skip products before offset
+                    if ($totalProductCount <= $offset) {
+                        $lastEndPos = $endPos + 10;
+                        continue;
+                    }
+                    
+                    // Stop if limit reached
+                    if ($limit > 0 && $processedCount >= $limit) {
+                        break 2; // Break both loops
+                    }
+                    
+                    try {
+                        $bytePosition = $currentPosition - strlen($buffer) + $startPos;
+                        $result = call_user_func($callback, $productXml, $totalProductCount, $bytePosition);
+                        $processedProducts[] = $result;
+                        $processedCount++;
+                        
+                    } catch (\Exception $e) {
+                        $this->logger->error("Error processing product #$totalProductCount: " . $e->getMessage());
+                        throw $e;
+                    }
+                    
+                    $lastEndPos = $endPos + 10;
+                }
+                
+                // Keep unprocessed part of buffer
+                if ($lastEndPos > 0) {
+                    $buffer = substr($buffer, $lastEndPos);
+                }
+            }
+            
+        } finally {
+            fclose($this->fileHandle);
+        }
+        
+        // Save updated position cache
+        $this->savePositionCache($positionCacheFile, $positionCache);
+        
+        $totalTime = round(microtime(true) - $startTime, 2);
+        $this->logger->info("Seek-based parsing completed: $processedCount products processed in {$totalTime}s");
+        
+        return $processedProducts;
+    }
+    
+    /**
+     * Load position cache for efficient seeking
+     */
+    private function loadPositionCache(string $cacheFile): array
+    {
+        if (!file_exists($cacheFile)) {
+            return [];
+        }
+        
+        $data = file_get_contents($cacheFile);
+        $cache = json_decode($data, true);
+        
+        return is_array($cache) ? $cache : [];
+    }
+    
+    /**
+     * Save position cache for future use
+     */
+    private function savePositionCache(string $cacheFile, array $cache): void
+    {
+        // Keep only every 100th position to prevent cache from growing too large
+        $filtered = [];
+        foreach ($cache as $productNum => $position) {
+            if ($productNum % 100 === 0) {
+                $filtered[$productNum] = $position;
+            }
+        }
+        
+        file_put_contents($cacheFile, json_encode($filtered));
     }
     
     /**
