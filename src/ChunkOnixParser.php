@@ -101,6 +101,12 @@ class ChunkOnixParser
                         $processedProducts[] = $result;
                         $productCount++;
                         
+                        // Check if callback wants to stop processing
+                        if ($result === false) {
+                            $this->logger->info("Callback requested early termination at product #$productCount");
+                            break 2; // Break both loops
+                        }
+                        
                         // Save checkpoint
                         if ($productCount % $checkpointInterval === 0) {
                             $checkpointPos = $currentPosition - strlen($buffer) + $endPos + 1;
