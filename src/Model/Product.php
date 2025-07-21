@@ -1104,12 +1104,12 @@ class Product
             $valuePaths = $mappings['physical']['extent_value'];
             
             foreach ($extents as $extent) {
-                $type = $extent->xpath($typePaths[0]) ?: $extent->xpath($typePaths[1]);
+                $type = $this->safeXpath($extent, $typePaths);
                 $type = $type ? (string)$type[0] : null;
                 
                 // ExtentType 00 = Main content page count, 07 = Total numbered pages
                 if ($type === '00' || $type === '07') {
-                    $value = $extent->xpath($valuePaths[0]) ?: $extent->xpath($valuePaths[1]);
+                    $value = $this->safeXpath($extent, $valuePaths);
                     return $value ? (int)$value[0] : null;
                 }
             }
@@ -1291,12 +1291,12 @@ class Product
             $unitPaths = $mappings['physical']['measure_unit'];
             
             foreach ($measures as $measure) {
-                $type = $measure->xpath($typePaths[0]) ?: $measure->xpath($typePaths[1]);
+                $type = $this->safeXpath($measure, $typePaths);
                 $type = $type ? (string)$type[0] : null;
                 
                 if ($type === $measureType) {
-                    $value = $measure->xpath($valuePaths[0]) ?: $measure->xpath($valuePaths[1]);
-                    $unit = $measure->xpath($unitPaths[0]) ?: $measure->xpath($unitPaths[1]);
+                    $value = $this->safeXpath($measure, $valuePaths);
+                    $unit = $this->safeXpath($measure, $unitPaths);
                     
                     if ($value) {
                         $unitCode = $unit ? (string)$unit[0] : null;
@@ -1597,5 +1597,20 @@ class Product
         return $this->requiresProfessionalAccess() || 
                $this->isSchoolBook() || 
                $this->isTeacherOnly();
+    }
+    
+    /**
+     * Safe xpath helper that handles namespace prefix warnings
+     * Tries non-namespaced version first for individual elements
+     * 
+     * @param \SimpleXMLElement $element Element to query
+     * @param array $paths Array of xpath expressions [namespaced, non-namespaced]
+     * @return \SimpleXMLElement[]|false
+     */
+    private function safeXpath(\SimpleXMLElement $element, array $paths)
+    {
+        // For individual elements, try non-namespaced first to avoid warnings
+        $result = $element->xpath($paths[1]) ?: $element->xpath($paths[0]);
+        return $result;
     }
 }
