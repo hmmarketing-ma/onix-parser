@@ -501,7 +501,14 @@ class OnixParser
         $this->parseSupply($importedNode, $product, $xpath);
         
         // Store original XML with proper namespace registration
-        $productXml = new \SimpleXMLElement($dom->saveXML($importedNode));
+        $xmlString = $dom->saveXML($importedNode);
+        
+        // Ensure namespace is declared in the XML string for SimpleXMLElement
+        if (($this->hasNamespace || $fragmentHasNamespace) && strpos($xmlString, 'xmlns=') === false) {
+            $xmlString = str_replace('<Product>', '<Product xmlns="' . $fragmentNamespaceURI . '">', $xmlString);
+        }
+        
+        $productXml = new \SimpleXMLElement($xmlString);
         
         // Register namespace for SimpleXMLElement xpath operations
         if ($this->hasNamespace || $fragmentHasNamespace) {
@@ -671,7 +678,14 @@ class OnixParser
         $this->parseSupply($productNode, $product);
         
         // Store original XML with proper namespace registration
-        $productXml = new \SimpleXMLElement($productNode->ownerDocument->saveXML($productNode));
+        $xmlString = $productNode->ownerDocument->saveXML($productNode);
+        
+        // Ensure namespace is declared in the XML string for SimpleXMLElement
+        if ($this->hasNamespace && strpos($xmlString, 'xmlns=') === false) {
+            $xmlString = str_replace('<Product>', '<Product xmlns="' . $this->namespaceURI . '">', $xmlString);
+        }
+        
+        $productXml = new \SimpleXMLElement($xmlString);
         
         // Register namespace for SimpleXMLElement xpath operations
         if ($this->hasNamespace) {
