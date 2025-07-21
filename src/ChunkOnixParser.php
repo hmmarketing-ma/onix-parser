@@ -42,6 +42,42 @@ class ChunkOnixParser
         if (!file_exists($filePath)) {
             throw new \Exception("File not found: $filePath");
         }
+        
+        // Detect namespace from file header to ensure proper xpath operations
+        $this->detectAndSetNamespace();
+    }
+    
+    /**
+     * Detect namespace from ONIX file header and configure parser
+     */
+    private function detectAndSetNamespace(): void
+    {
+        $handle = fopen($this->filePath, 'rb');
+        if (!$handle) {
+            return;
+        }
+        
+        // Read first 2KB to find ONIXMessage element and its namespace
+        $header = fread($handle, 2048);
+        fclose($handle);
+        
+        // Look for xmlns attribute in ONIXMessage
+        if (preg_match('/xmlns\s*=\s*["\']([^"\']+)["\']/i', $header, $matches)) {
+            $namespaceURI = $matches[1];
+            
+            // Set namespace on the parser using reflection to access protected properties
+            $reflection = new \ReflectionClass($this->parser);
+            $hasNamespaceProperty = $reflection->getProperty('hasNamespace');
+            $namespaceURIProperty = $reflection->getProperty('namespaceURI');
+            
+            $hasNamespaceProperty->setAccessible(true);
+            $namespaceURIProperty->setAccessible(true);
+            
+            $hasNamespaceProperty->setValue($this->parser, true);
+            $namespaceURIProperty->setValue($this->parser, $namespaceURI);
+            
+            $this->logger->info("ChunkOnixParser detected namespace: $namespaceURI");
+        }
     }
     
     /**
