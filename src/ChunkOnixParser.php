@@ -69,6 +69,8 @@ class ChunkOnixParser
         $buffer = '';
         $processedProducts = [];
         $startTime = microtime(true);
+        $earlyTermination = false; // Track if callback requested early stop
+        $finalPosition = 0; // Track final position before file close
         
         try {
             while (!feof($this->fileHandle)) {
@@ -104,6 +106,8 @@ class ChunkOnixParser
                         // Check if callback wants to stop processing
                         if ($result === false) {
                             $this->logger->info("Callback requested early termination at product #$productCount");
+                            $earlyTermination = true;
+                            $finalPosition = $currentPosition - strlen($buffer) + $endPos + 1;
                             break 2; // Break both loops
                         }
                         
@@ -148,9 +152,14 @@ class ChunkOnixParser
             fclose($this->fileHandle);
         }
         
-        // Clear checkpoint on completion
-        if (file_exists($this->checkpointFile)) {
+        // Only clear checkpoint if we reached EOF naturally (no early termination)
+        if (!$earlyTermination && file_exists($this->checkpointFile)) {
+            $this->logger->info("File parsing completed naturally - clearing checkpoint");
             unlink($this->checkpointFile);
+        } elseif ($earlyTermination && $finalPosition > 0) {
+            // Save final checkpoint for continuation
+            $this->saveCheckpoint($finalPosition, $productCount);
+            $this->logger->info("Early termination - checkpoint preserved for continuation at position: " . number_format($finalPosition));
         }
         
         $totalTime = round(microtime(true) - $startTime, 2);
