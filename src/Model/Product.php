@@ -1147,7 +1147,7 @@ class Product
         
         if ($languageNodes) {
             foreach ($languageNodes as $node) {
-                $code = $node->xpath($codePaths[0]) ?: $node->xpath($codePaths[1]);
+                $code = $this->safeXpath($node, $codePaths);
                 if ($code) {
                     return (string)$code[0];
                 }
@@ -1610,7 +1610,10 @@ class Product
     private function safeXpath(\SimpleXMLElement $element, array $paths)
     {
         // For individual elements, try non-namespaced first to avoid warnings
-        $result = $element->xpath($paths[1]) ?: $element->xpath($paths[0]);
-        return $result;
+        $result = @$element->xpath($paths[1]);
+        if (!$result) {
+            $result = @$element->xpath($paths[0]);
+        }
+        return $result ?: false;
     }
 }
