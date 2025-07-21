@@ -5,6 +5,7 @@ A modern, object-oriented PHP library for parsing ONIX (ONline Information eXcha
 ## Features
 
 - **Full ONIX 3.0 XML Support** - Complete parsing of ONIX 3.0 namespaced and non-namespaced XML
+- **ChunkOnixParser** - True byte-level resume processing for unlimited file sizes (NEW!)
 - **Memory-Efficient Streaming** - Stream large XML files without memory issues
 - **Rich Product Information** - Extract all product metadata including titles, descriptions, subjects
 - **Physical Product Details** - Page count, dimensions (height, width, thickness), weight with unit conversion
