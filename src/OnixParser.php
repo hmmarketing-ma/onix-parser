@@ -500,8 +500,14 @@ class OnixParser
         // Parse supply details (availability, prices)
         $this->parseSupply($importedNode, $product, $xpath);
         
-        // Store original XML
+        // Store original XML with proper namespace registration
         $productXml = new \SimpleXMLElement($dom->saveXML($importedNode));
+        
+        // Register namespace for SimpleXMLElement xpath operations
+        if ($this->hasNamespace || $fragmentHasNamespace) {
+            $productXml->registerXPathNamespace('onix', $fragmentNamespaceURI);
+        }
+        
         $product->setXml($productXml);
         
         return $product;
@@ -664,8 +670,14 @@ class OnixParser
         // Parse supply details (availability, prices)
         $this->parseSupply($productNode, $product);
         
-        // Store original XML
+        // Store original XML with proper namespace registration
         $productXml = new \SimpleXMLElement($productNode->ownerDocument->saveXML($productNode));
+        
+        // Register namespace for SimpleXMLElement xpath operations
+        if ($this->hasNamespace) {
+            $productXml->registerXPathNamespace('onix', $this->namespaceURI);
+        }
+        
         $product->setXml($productXml);
         
         return $product;
