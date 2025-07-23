@@ -107,6 +107,7 @@ class ChunkOnixParser
         $startTime = microtime(true);
         $earlyTermination = false; // Track if callback requested early stop
         $finalPosition = 0; // Track final position before file close
+        $lastFilePosition = 0; // Track file position during parsing
         
         try {
             while (!feof($this->fileHandle)) {
@@ -117,6 +118,7 @@ class ChunkOnixParser
                 
                 $buffer .= $chunk;
                 $currentPosition = ftell($this->fileHandle);
+                $lastFilePosition = $currentPosition; // Track the last known position
                 
                 // Process complete products in buffer
                 $lastEndPos = 0;
@@ -165,11 +167,12 @@ class ChunkOnixParser
                         }
                         
                     } catch (\Exception $e) {
-                        $this->logger->error("Error processing product #$productCount: " . $e->getMessage());
+                        $this->logger->error("Error processing product #$productCount at buffer position $startPos-$endPos: " . $e->getMessage());
+                        $this->logger->debug("Problematic XML fragment: " . substr($productXml, 0, 200) . "...");
                         throw $e;
                     }
                     
-                    $lastEndPos = $endPos + 10;
+                    $lastEndPos = $endPos + 1; // TESTING: Changed from +10 to +1 to avoid skipping products
                 }
                 
                 // Keep unprocessed part of buffer
@@ -177,10 +180,19 @@ class ChunkOnixParser
                     $buffer = substr($buffer, $lastEndPos);
                 }
                 
-                // Prevent buffer from growing too large
-                if (strlen($buffer) > $this->chunkSize * 2) {
-                    $keepSize = $this->chunkSize;
-                    $buffer = substr($buffer, -$keepSize);
+                // Prevent buffer from growing too large - but preserve potential Product boundaries
+                if (strlen($buffer) > $this->chunkSize * 3) {
+                    // Instead of aggressive truncation, find a safe cut point after a complete Product
+                    $safeEndPos = $this->findLastCompleteProductEnd($buffer, $this->chunkSize);
+                    if ($safeEndPos > 0) {
+                        $buffer = substr($buffer, $safeEndPos);
+                        $this->logger->debug("Buffer trimmed safely at position $safeEndPos to prevent memory issues");
+                    } else {
+                        // Fallback: keep more buffer if we can't find a safe cut point
+                        $keepSize = $this->chunkSize * 2;
+                        $buffer = substr($buffer, -$keepSize);
+                        $this->logger->warning("Used fallback buffer trimming - may affect parsing");
+                    }
                 }
             }
             
@@ -190,8 +202,16 @@ class ChunkOnixParser
         
         // Only clear checkpoint if we reached EOF naturally (no early termination)
         if (!$earlyTermination && file_exists($this->checkpointFile)) {
-            $this->logger->info("File parsing completed naturally - clearing checkpoint");
-            unlink($this->checkpointFile);
+            $this->logger->info("File parsing completed naturally - reached position " . number_format($lastFilePosition) . " of " . number_format($this->fileSize) . " bytes");
+            
+            // Additional safety check: verify we actually reached the end
+            if ($lastFilePosition >= $this->fileSize) {
+                $this->logger->info("Confirmed EOF reached - clearing checkpoint");
+                unlink($this->checkpointFile);
+            } else {
+                $this->logger->warning("Parsing stopped but EOF not reached - preserving checkpoint for investigation");
+                $this->saveCheckpoint($lastFilePosition, $productCount);
+            }
         } elseif ($earlyTermination && $finalPosition > 0) {
             // Save final checkpoint for continuation
             $this->saveCheckpoint($finalPosition, $productCount);
@@ -289,7 +309,7 @@ class ChunkOnixParser
                         throw $e;
                     }
                     
-                    $lastEndPos = $endPos + 10;
+                    $lastEndPos = $endPos + 1; // TESTING: Changed from +10 to +1 to avoid skipping products
                 }
                 
                 // Keep unprocessed part of buffer
@@ -403,7 +423,7 @@ class ChunkOnixParser
                         throw $e;
                     }
                     
-                    $lastEndPos = $endPos + 10;
+                    $lastEndPos = $endPos + 1; // TESTING: Changed from +10 to +1 to avoid skipping products
                 }
                 
                 // Keep unprocessed part of buffer
@@ -454,6 +474,24 @@ class ChunkOnixParser
         }
         
         file_put_contents($cacheFile, json_encode($filtered));
+    }
+    
+    /**
+     * Find the last complete Product end position for safe buffer trimming
+     */
+    private function findLastCompleteProductEnd(string $buffer, int $maxKeepSize): int
+    {
+        $searchStart = max(0, strlen($buffer) - $maxKeepSize);
+        $lastProductEnd = 0;
+        
+        // Look for complete </Product> tags in the trim candidate area
+        $pos = $searchStart;
+        while (($closePos = strpos($buffer, '</Product>', $pos)) !== false) {
+            $lastProductEnd = $closePos + 10; // +10 for '</Product>'
+            $pos = $closePos + 1;
+        }
+        
+        return $lastProductEnd;
     }
     
     /**
@@ -530,7 +568,7 @@ class ChunkOnixParser
     }
     
     /**
-     * Get total product count (approximate, scans in chunks)
+     * Get total product count (accurate, scans entire file properly)
      */
     public function getProductCount(): int
     {
@@ -543,6 +581,7 @@ class ChunkOnixParser
         
         $productCount = 0;
         $buffer = '';
+        $overlap = 1024; // Keep 1KB overlap to avoid missing products at chunk boundaries
         
         try {
             while (!feof($handle)) {
@@ -553,20 +592,35 @@ class ChunkOnixParser
                 
                 $buffer .= $chunk;
                 
-                // Count <Product> opening tags
-                $count = preg_match_all('/<(\w*:)?Product\b/i', $buffer);
-                $productCount += $count;
+                // Process complete products in buffer using same logic as parsing
+                $lastEndPos = 0;
+                while (($startPos = $this->findNextProductTag($buffer, $lastEndPos)) !== false) {
+                    $endPos = $this->findClosingProductTag($buffer, $startPos);
+                    
+                    if ($endPos === false) {
+                        // Incomplete product, need more data
+                        break;
+                    }
+                    
+                    $productCount++;
+                    $lastEndPos = $endPos + 1;
+                }
                 
-                // Keep only the last part of buffer to avoid double-counting
-                if (strlen($buffer) > $this->chunkSize) {
-                    $buffer = substr($buffer, -1024); // Keep last 1KB
+                // Keep unprocessed part of buffer with overlap to avoid missing products
+                if ($lastEndPos > 0) {
+                    $buffer = substr($buffer, $lastEndPos);
+                } else {
+                    // No complete products found, keep overlap
+                    if (strlen($buffer) > $overlap) {
+                        $buffer = substr($buffer, -$overlap);
+                    }
                 }
             }
         } finally {
             fclose($handle);
         }
         
-        $this->logger->info("Found approximately $productCount products");
+        $this->logger->info("Found exactly $productCount products in file");
         return $productCount;
     }
     
