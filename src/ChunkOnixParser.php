@@ -79,7 +79,19 @@ class ChunkOnixParser
             $this->logger->info("ChunkOnixParser detected namespace: $namespaceURI");
         }
     }
-    
+
+    /**
+     * Set a custom checkpoint filename
+     * Useful for avoiding conflicts between concurrent parsing jobs
+     *
+     * @param string $checkpointFile Full path to checkpoint file
+     * @return void
+     */
+    public function setCheckpointFile(string $checkpointFile): void
+    {
+        $this->checkpointFile = $checkpointFile;
+    }
+
     /**
      * Parse ONIX file with chunk-based processing and automatic checkpoints
      */
