@@ -76,8 +76,7 @@ Dates are arrays `['role', 'format', 'date']`; the date string is exactly as sen
 
 ### Known limits
 
-* `ExtentUnit 05` is accepted for the page count because the DILICOM checklist asks for it. In ONIX list 24 the
-  code 05 is not "pages" for every sender; `getExtents()` returns the unit so you can check it.
+* Pages = `ExtentUnit 03` only (DILICOM, 2026-11-05: unit 5 is a duration in minutes). `getDurationMinutes()` returns unit 05.
 * Several `SupplyDetail`: the 1.x single-value getters (`getAvailabilityCode()`, `getSupplierGLN()`,
   `getSupplierName()`) still return the **last** one. Use `getSupplyDetails()` for multi-distribution.
 * The parser reads facts. It does not choose the Morocco price, the availability to show, or the cover to keep.

@@ -1345,8 +1345,8 @@ class Product
     /**
      * Get page count from product extent information.
      *
-     * Accepts ExtentUnit 03 (pages, real DILICOM files) and 05 (checklist). Preference order:
-     * type 00 + unit 03, type 03 + unit 03, type 00 + unit 05, type 03 + unit 05,
+     * Pages = ExtentUnit 03 only (DILICOM confirmed 2026-11-05: unit 5 is a duration in minutes).
+     * Preference order: type 00 + unit 03, type 03 + unit 03,
      * then the old behaviour (type 00 or 07 with no unit given).
      *
      * @return int|null Number of pages
@@ -1371,12 +1371,8 @@ class Product
                 $rank = 1;
             } elseif ($unit === '03' && $type === '03') {
                 $rank = 2;
-            } elseif ($unit === '05' && $type === '00') {
-                $rank = 3;
-            } elseif ($unit === '05' && $type === '03') {
-                $rank = 4;
             } elseif (($unit === null || $unit === '') && ($type === '00' || $type === '07')) {
-                $rank = 5;
+                $rank = 3;
             }
             if ($rank !== null && $rank < $bestRank) {
                 $best = (int)$value;
@@ -1384,6 +1380,22 @@ class Product
             }
         }
         return $best;
+    }
+
+    /**
+     * Duration in minutes (ExtentUnit 05), for audio/video products. Never a page count.
+     *
+     * @return int|null
+     */
+    public function getDurationMinutes()
+    {
+        foreach ($this->extents ?? [] as $extent) {
+            $value = trim((string)($extent['value'] ?? ''));
+            if (($extent['unit'] ?? null) === '05' && ctype_digit($value) && (int)$value > 0) {
+                return (int)$value;
+            }
+        }
+        return null;
     }
 
     /**

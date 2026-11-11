@@ -150,13 +150,13 @@ class FieldCoverage
             }
         }
 
-        // Page count: Extent type 00 or 03 with unit 03 or 05 and a value
+        // Page count: Extent type 00 or 03 with unit 03 (pages) and a value
         $pages = 0;
         foreach ($x->query('o:DescriptiveDetail/o:Extent', $root) as $e) {
             $t = trim($x->evaluate('string(o:ExtentType)', $e));
             $u = trim($x->evaluate('string(o:ExtentUnit)', $e));
             $v = trim($x->evaluate('string(o:ExtentValue)', $e));
-            if (in_array($t, ['00', '03'], true) && in_array($u, ['03', '05'], true) && $v !== '') {
+            if (in_array($t, ['00', '03'], true) && $u === '03' && $v !== '') {
                 $pages = 1;
                 break;
             }

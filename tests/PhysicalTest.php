@@ -61,16 +61,24 @@ class PhysicalTest extends TestCase
         $this->assertSame(96, $p->getPageCount());
     }
 
-    public function testPageCountUnit05FromChecklist(): void
+    public function testUnit05IsMinutesNotPages(): void
     {
         $p = F::fromInner('<DescriptiveDetail>' . $this->extent('00', '200', '05') . '</DescriptiveDetail>');
-        $this->assertSame(200, $p->getPageCount());
+        $this->assertNull($p->getPageCount());
+        $this->assertSame(200, $p->getDurationMinutes());
     }
 
-    public function testPageCountPrefersUnit03OverUnit05(): void
+    public function testPageCountIgnoresUnit05EvenWhenPresent(): void
     {
         $p = F::fromInner('<DescriptiveDetail>' . $this->extent('00', '200', '05') . $this->extent('00', '120', '03') . '</DescriptiveDetail>');
         $this->assertSame(120, $p->getPageCount());
+        $this->assertSame(200, $p->getDurationMinutes());
+    }
+
+    public function testNoDurationWithoutUnit05(): void
+    {
+        $p = F::fromInner('<DescriptiveDetail>' . $this->extent('00', '112', '03') . '</DescriptiveDetail>');
+        $this->assertNull($p->getDurationMinutes());
     }
 
     public function testExtentsAreExposedWithUnit(): void

@@ -12,7 +12,7 @@ DILICOM pipeline rebuild (STORY-879). Details: docs/PARSER-2.0.md.
 ### Fixed
 - `ProductAvailability` was never read (xpath context). Now read per `SupplyDetail`.
 - Height, width, thickness, weight and page count were always empty (namespace on nested xpath). Units are exposed.
-  Page count accepts `ExtentType 00/03` with `ExtentUnit 03/05`.
+  Page count accepts `ExtentType 00/03` with `ExtentUnit 03` only; unit 05 (minutes) is `getDurationMinutes()`.
 - Checkpoint write is atomic (temp + fsync + rename). No more `md5_file()` of the whole file at every checkpoint.
 - A record larger than the buffer is no longer cut and lost; a file that ends inside a record no longer drops it silently.
 - Two divisions by zero on very fast runs; PHP 8.4 implicit-nullable deprecations; `filesize()` before `file_exists()`.
