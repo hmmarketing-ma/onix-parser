@@ -55,6 +55,9 @@ class ChunkOnixParser
     
     /** @var int */
     private $fileSize;
+
+    /** @var string|null Default namespace of the ONIXMessage element (null = file has none) */
+    private $namespaceURI = null;
     
     public function __construct(string $filePath, ?OnixParser $parser = null, ?Logger $logger = null)
     {
@@ -89,6 +92,7 @@ class ChunkOnixParser
         // Look for xmlns attribute in ONIXMessage
         if (preg_match('/xmlns\s*=\s*["\']([^"\']+)["\']/i', $header, $matches)) {
             $namespaceURI = $matches[1];
+            $this->namespaceURI = $namespaceURI;
             
             // Set namespace on the parser using reflection to access protected properties
             $reflection = new \ReflectionClass($this->parser);
@@ -783,12 +787,13 @@ class ChunkOnixParser
     {
         $dom = new \DOMDocument();
         
-        // Add ONIX namespace if missing (minimal fix for extracted fragments)
-        if (strpos($xml, 'xmlns') === false && strpos($xml, '<Product>') !== false) {
-            $xml = str_replace('<Product>', '<Product xmlns="http://www.editeur.org/onix/3.0/reference">', $xml);
+        // A fragment cut out of the file has lost the xmlns of the ONIXMessage element: put it back on <Product>
+        if ($this->namespaceURI !== null && !preg_match('/^<Product[^>]*\sxmlns\s*=/', $xml)) {
+            $xml = preg_replace('/^<Product(?=[\s>])/', '<Product xmlns="' . $this->namespaceURI . '"', $xml, 1);
         }
         
-        if (!$dom->loadXML($xml)) {
+        // LIBXML_NONET: never fetch anything from the network while parsing
+        if (!$dom->loadXML($xml, LIBXML_NONET)) {
             throw new \Exception("Failed to parse XML fragment");
         }
         

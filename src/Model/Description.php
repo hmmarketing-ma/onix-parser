@@ -253,4 +253,20 @@ class Description
     {
         return (string) $this->getPlainText();
     }
+
+    /**
+     * @var string|null Language of the text (language attribute or element)
+     */
+    private $language;
+
+    public function getLanguage(): ?string
+    {
+        return $this->language;
+    }
+
+    public function setLanguage(?string $language): self
+    {
+        $this->language = $language;
+        return $this;
+    }
 }

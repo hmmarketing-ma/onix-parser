@@ -91,4 +91,36 @@ class Title
     {
         return $this->getFullTitle();
     }
+
+    /**
+     * @var string|null Text case flag (textcase attribute or TextCase element): 00 undefined, 01 sentence case, 02 title case, 03 all capitals
+     */
+    private $textCase;
+
+    /**
+     * @var string|null Language of the title text (language attribute or element), ISO 639-2/B e.g. 'fre'
+     */
+    private $language;
+
+    public function getTextCase(): ?string
+    {
+        return $this->textCase;
+    }
+
+    public function setTextCase(?string $textCase): self
+    {
+        $this->textCase = $textCase;
+        return $this;
+    }
+
+    public function getLanguage(): ?string
+    {
+        return $this->language;
+    }
+
+    public function setLanguage(?string $language): self
+    {
+        $this->language = $language;
+        return $this;
+    }
 }

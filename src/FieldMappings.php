@@ -29,6 +29,24 @@ class FieldMappings
                 'sent_date' => ['//onix:Header/onix:SentDateTime', '//Header/SentDateTime'],
             ],
             
+            // Title text attributes, relative to the Product (first main title): textcase / language
+            'title_text_attrs' => [
+                'text_case' => [
+                    ".//onix:TitleDetail[onix:TitleType='01']/onix:TitleElement[onix:TitleElementLevel='01']/onix:TextCase",
+                    ".//TitleDetail[TitleType='01']/TitleElement[TitleElementLevel='01']/TextCase",
+                    ".//onix:TitleDetail[onix:TitleType='01']/onix:TitleElement[onix:TitleElementLevel='01']/onix:TextCaseFlag",
+                    ".//TitleDetail[TitleType='01']/TitleElement[TitleElementLevel='01']/TextCaseFlag",
+                    ".//onix:TitleDetail[onix:TitleType='01']/onix:TitleElement[onix:TitleElementLevel='01']/onix:TitleText/@textcase",
+                    ".//TitleDetail[TitleType='01']/TitleElement[TitleElementLevel='01']/TitleText/@textcase",
+                ],
+                'language' => [
+                    ".//onix:TitleDetail[onix:TitleType='01']/onix:TitleElement[onix:TitleElementLevel='01']/onix:TitleLanguage",
+                    ".//TitleDetail[TitleType='01']/TitleElement[TitleElementLevel='01']/TitleLanguage",
+                    ".//onix:TitleDetail[onix:TitleType='01']/onix:TitleElement[onix:TitleElementLevel='01']/onix:TitleText/@language",
+                    ".//TitleDetail[TitleType='01']/TitleElement[TitleElementLevel='01']/TitleText/@language",
+                ],
+            ],
+
             // Product nodes
             'products' => ['//onix:Product', '//Product'],
             'record_reference' => ['./onix:RecordReference', './RecordReference'],
@@ -111,7 +129,9 @@ class FieldMappings
             'description' => [
                 'text_nodes' => ['./onix:CollateralDetail/onix:TextContent', './CollateralDetail/TextContent'],
                 'text_type' => ['./onix:TextType', './TextType'],
-                'text_format' => ['./onix:TextFormat', './TextFormat'],
+                // Element form first, then the attribute form of the real DILICOM files (<Text textformat="05">)
+                'text_format' => ['./onix:TextFormat', './TextFormat', './onix:Text/@textformat', './Text/@textformat'],
+                'text_language' => ['./onix:TextLanguage', './TextLanguage', './onix:Text/@language', './Text/@language'],
                 'text_content' => ['./onix:Text', './Text'],
             ],
             
@@ -149,6 +169,11 @@ class FieldMappings
                 'imprint_name' => [
                     './onix:PublishingDetail/onix:Imprint/onix:ImprintName',
                     './PublishingDetail/Imprint/ImprintName'
+                ],
+                // Imprint GLN: ImprintIDType 06
+                'imprint_gln' => [
+                    "./onix:PublishingDetail/onix:Imprint/onix:ImprintIdentifier[onix:ImprintIDType='06']/onix:IDValue",
+                    "./PublishingDetail/Imprint/ImprintIdentifier[ImprintIDType='06']/IDValue"
                 ],
             ],
             
@@ -247,6 +272,15 @@ class FieldMappings
                 'content_type' => ['./onix:ResourceContentType', './ResourceContentType'],
                 'mode' => ['./onix:ResourceMode', './ResourceMode'],
                 'url' => ['.//onix:ResourceVersion/onix:ResourceLink', './/ResourceVersion/ResourceLink'],
+                // Every ResourceVersion of a SupportingResource (relative to the SupportingResource)
+                'versions' => ['./onix:ResourceVersion', './ResourceVersion'],
+                'version_form' => ['./onix:ResourceForm', './ResourceForm'],
+                'version_link' => ['./onix:ResourceLink', './ResourceLink'],
+                'version_features' => ['./onix:ResourceVersionFeature', './ResourceVersionFeature'],
+                'feature_type' => ['./onix:ResourceVersionFeatureType', './ResourceVersionFeatureType'],
+                'feature_value' => ['./onix:FeatureValue', './FeatureValue'],
+                'content_dates' => ['./onix:ContentDate', './ContentDate'],
+                'content_date_role' => ['./onix:ContentDateRole', './ContentDateRole'],
             ],
             
             // Language information

@@ -7,6 +7,7 @@ use ONIXParser\Model\Onix;
 use ONIXParser\Model\Product;
 use ONIXParser\Model\Subject;
 use ONIXParser\Model\Price;
+use ONIXParser\Model\ResourceVersion;
 use ONIXParser\Model\SupplyDetail;
 use ONIXParser\Model\Tax;
 use ONIXParser\Model\Territory;
@@ -61,7 +62,7 @@ class OnixParser
      *
      * @param Logger|null $logger Optional logger instance
      */
-    public function __construct(Logger $logger = null)
+    public function __construct(?Logger $logger = null)
     {
         $this->logger = $logger ?: new Logger();
         $this->onix = new Onix();
@@ -148,9 +149,9 @@ class OnixParser
             $dom = new \DOMDocument();
             
             if ($isFile) {
-                $loaded = $dom->load($xmlPath);
+                $loaded = $dom->load($xmlPath, LIBXML_NONET);
             } else {
-                $loaded = $dom->loadXML($xmlPath);
+                $loaded = $dom->loadXML($xmlPath, LIBXML_NONET);
             }
             
             if (!$loaded) {
@@ -239,7 +240,7 @@ class OnixParser
             $reader = new \XMLReader();
             
             // Open the XML file
-            if (!$reader->open($xmlPath)) {
+            if (!$reader->open($xmlPath, null, LIBXML_NONET)) {
                 $errors = libxml_get_errors();
                 libxml_clear_errors();
                 throw new \Exception('Failed to open XML file: ' . $this->formatLibXMLErrors($errors));
@@ -778,6 +779,11 @@ class OnixParser
             if ($subtitle) {
                 $title->setSubtitle($subtitle);
             }
+
+            // textcase / language: attribute of TitleText, or element
+            $attrs = $this->fieldMappings['title_text_attrs'];
+            $title->setTextCase($this->getNodeValueWithContext($attrs['text_case'], $productNode, $localXpath) ?: null);
+            $title->setLanguage($this->getNodeValueWithContext($attrs['language'], $productNode, $localXpath) ?: null);
             
             $product->setTitle($title);
         }
@@ -963,6 +969,12 @@ class OnixParser
                     }
                 }
                 
+                // Language of the text (language attribute of Text, or element)
+                $textLanguage = $this->getNodeValueWithContext($this->fieldMappings['description']['text_language'], $textNode, $localXpath);
+                if ($textLanguage) {
+                    $description->setLanguage($textLanguage);
+                }
+
                 // Get text content
                 $textContent = $this->getNodeValueWithContext($this->fieldMappings['description']['text_content'], $textNode, $localXpath);
                 if ($textContent) {
@@ -997,6 +1009,7 @@ class OnixParser
         $imageNodes = $this->queryNodesWithContext($this->fieldMappings['images']['nodes'], $productNode, $localXpath);
         
         foreach ($imageNodes as $imageNode) {
+            $this->parseResourceVersions($imageNode, $product, $localXpath);
             try {
                 $image = new \ONIXParser\Model\Image();
                 
@@ -1045,6 +1058,41 @@ class OnixParser
             } catch (\Exception $e) {
                 $this->logger->warning("Error parsing image: " . $e->getMessage());
             }
+        }
+    }
+
+    /**
+     * Parse every ResourceVersion of one SupportingResource into ResourceVersion objects:
+     * content type, mode, form, URL, features (height, width, bytes ...) and ContentDates.
+     *
+     * @param \DOMNode $resourceNode a SupportingResource
+     * @param Product $product
+     * @param \DOMXPath|null $localXpath
+     */
+    private function parseResourceVersions(\DOMNode $resourceNode, Product $product, ?\DOMXPath $localXpath = null): void
+    {
+        $map = $this->fieldMappings['images'];
+        $contentType = $this->getNodeValueWithContext($map['content_type'], $resourceNode, $localXpath);
+        $mode = $this->getNodeValueWithContext($map['mode'], $resourceNode, $localXpath);
+
+        foreach ($this->queryNodesWithContext($map['versions'], $resourceNode, $localXpath) as $versionNode) {
+            $version = new ResourceVersion();
+            $version->setContentType($contentType ?: null)
+                ->setMode($mode ?: null)
+                ->setForm($this->getNodeValueWithContext($map['version_form'], $versionNode, $localXpath) ?: null)
+                ->setUrl($this->getNodeValueWithContext($map['version_link'], $versionNode, $localXpath) ?: null);
+
+            foreach ($this->queryNodesWithContext($map['version_features'], $versionNode, $localXpath) as $featureNode) {
+                $version->addFeature(
+                    $this->getNodeValueWithContext($map['feature_type'], $featureNode, $localXpath),
+                    $this->getNodeValueWithContext($map['feature_value'], $featureNode, $localXpath)
+                );
+            }
+            foreach ($this->readDateComposites($map['content_dates'], $map['content_date_role'], $versionNode, $localXpath) as $d) {
+                $version->addContentDate($d['role'], $d['format'], $d['date']);
+            }
+
+            $product->addResourceVersion($version);
         }
     }
 
@@ -1615,6 +1663,10 @@ class OnixParser
      */
     private function parsePublisher(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
+        // Imprint GLN (ImprintIDType 06)
+        $imprintGln = $this->getNodeValueWithContext($this->fieldMappings['publisher']['imprint_gln'], $productNode, $localXpath);
+        $product->setImprintGln($imprintGln ?: null);
+
         // Try publisher name first
         $publisherName = $this->getNodeValueWithContext($this->fieldMappings['publisher']['publisher_name'], $productNode, $localXpath);
         if ($publisherName) {
@@ -1637,6 +1689,12 @@ class OnixParser
      */
     private function parsePublicationDates(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
+        // Every PublishingDate as sent (role, format, date)
+        $dates = $this->fieldMappings['publication_dates'];
+        foreach ($this->readDateComposites($dates['nodes'], $dates['role'], $productNode, $localXpath) as $d) {
+            $product->addPublishingDate($d['role'], $d['format'], $d['date']);
+        }
+
         // Parse publication date (role = '01')
         $publicationDate = $this->getNodeValueWithContext($this->fieldMappings['publication_dates']['publication'], $productNode, $localXpath);
         if ($publicationDate) {

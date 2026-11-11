@@ -170,6 +170,16 @@ class FieldCoverage
             return 0;
         };
 
+        // texts with content that carry a format (textformat attribute or TextFormat element)
+        $textFormat = 0;
+        foreach ($x->query('o:CollateralDetail/o:TextContent', $root) as $t) {
+            $hasText = trim($x->evaluate('string(o:Text)', $t)) !== '';
+            $fmt = trim($x->evaluate('string(o:Text/@textformat)', $t)) . trim($x->evaluate('string(o:TextFormat)', $t));
+            if ($hasText && $fmt !== '') {
+                $textFormat++;
+            }
+        }
+
         $sd = 'o:ProductSupply/o:SupplyDetail';
         $price = "$sd/o:Price";
         $res = 'o:CollateralDetail/o:SupportingResource/o:ResourceVersion';
@@ -208,6 +218,9 @@ class FieldCoverage
                 'resource width' => $nonEmpty("$res/o:ResourceVersionFeature[o:ResourceVersionFeatureType='03']/o:FeatureValue"),
                 'resource bytes' => $nonEmpty("$res/o:ResourceVersionFeature[o:ResourceVersionFeatureType='07']/o:FeatureValue"),
                 'resource date role 17' => $n("$res/o:ContentDate[o:ContentDateRole='17']"),
+                'text format' => $textFormat,
+                'title textcase' => $nonEmpty("o:DescriptiveDetail/o:TitleDetail[o:TitleType='01']/o:TitleElement[o:TitleElementLevel='01']/o:TitleText/@textcase"),
+                'publishing dates (all)' => $n('o:PublishingDetail/o:PublishingDate'),
             ],
             'dist' => [
                 'availability code' => $codes("$sd/o:ProductAvailability"),
@@ -326,6 +339,14 @@ class FieldCoverage
                 $counts['resource date role 17'] += ($v->getContentDate('17') !== null) ? 1 : 0;
             }
         }
+
+        $d = 0;
+        foreach ($p->getDescriptions() as $desc) {
+            $d += ((string)$desc->getFormat() !== '') ? 1 : 0;
+        }
+        $counts['text format'] = $d;
+        $counts['title textcase'] = ($p->getTitle() && (string)$p->getTitle()->getTextCase() !== '') ? 1 : 0;
+        $counts['publishing dates (all)'] = count($p->getPublishingDates());
 
         return ['counts' => $counts, 'dist' => $dist];
     }

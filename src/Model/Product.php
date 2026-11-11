@@ -140,6 +140,21 @@ class Product
     private $presentBlocks = null;
 
     /**
+     * @var string|null Imprint GLN (ImprintIDType 06)
+     */
+    private $imprintGln = null;
+
+    /**
+     * @var array<int,array{role:?string,format:?string,date:?string}> Every PublishingDate, as sent
+     */
+    private $publishingDates = [];
+
+    /**
+     * @var ResourceVersion[] Every ResourceVersion of every SupportingResource
+     */
+    private $resourceVersions = [];
+
+    /**
      * @var Territory[] Market territories of the ProductSupply
      */
     private $marketTerritories = [];
@@ -1126,6 +1141,78 @@ class Product
     {
         $this->supplyDetails[] = $detail;
         return $this;
+    }
+
+    public function getImprintGln(): ?string
+    {
+        return $this->imprintGln;
+    }
+
+    public function setImprintGln(?string $gln): self
+    {
+        $this->imprintGln = $gln;
+        return $this;
+    }
+
+    /**
+     * Every PublishingDate: role (list 163: 01 publication, 02 embargo, 09 ...), format (list 55)
+     * and the date string exactly as sent (dates like 20991231 = undetermined are NOT interpreted here).
+     *
+     * @return array<int,array{role:?string,format:?string,date:?string}>
+     */
+    public function getPublishingDates(): array
+    {
+        return $this->publishingDates;
+    }
+
+    public function addPublishingDate(?string $role, ?string $format, ?string $date): self
+    {
+        $this->publishingDates[] = ['role' => $role, 'format' => $format, 'date' => $date];
+        return $this;
+    }
+
+    /**
+     * Every resource version (each size of each cover or sample), in file order.
+     *
+     * @param string|null $contentType keep only this ResourceContentType (e.g. '01' front cover)
+     * @return ResourceVersion[]
+     */
+    public function getResourceVersions(?string $contentType = null): array
+    {
+        if ($contentType === null) {
+            return $this->resourceVersions;
+        }
+        return array_values(array_filter($this->resourceVersions, function (ResourceVersion $v) use ($contentType) {
+            return $v->getContentType() === $contentType;
+        }));
+    }
+
+    public function addResourceVersion(ResourceVersion $version): self
+    {
+        $this->resourceVersions[] = $version;
+        return $this;
+    }
+
+    /**
+     * The front cover version (ResourceContentType 01) whose longest side is closest to $pixels.
+     * Versions with no known size are ignored. On a tie the smaller file wins. Null when none.
+     */
+    public function getFrontCoverNear(int $pixels = 400): ?ResourceVersion
+    {
+        $best = null;
+        $bestGap = PHP_INT_MAX;
+        foreach ($this->getResourceVersions('01') as $v) {
+            $side = $v->getLongestSide();
+            if ($side === null || !$v->getUrl()) {
+                continue;
+            }
+            $gap = abs($side - $pixels);
+            if ($gap < $bestGap || ($gap === $bestGap && $best && ($v->getBytes() ?? PHP_INT_MAX) < ($best->getBytes() ?? PHP_INT_MAX))) {
+                $best = $v;
+                $bestGap = $gap;
+            }
+        }
+        return $best;
     }
 
     /**

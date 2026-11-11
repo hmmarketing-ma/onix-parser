@@ -53,3 +53,31 @@ A checkpoint always points to a record boundary.
   (1.x returned the list of callback results: that list is gone, it grew with the file.)
 * Tag scan: `<Product` must be followed by `>`, space, tab, CR or LF. Prefixed tags (`<onix:Product>`) and
   short tags (`<product>`) are **not** supported. The closing tag must be `</Product>` (case sensitive).
+
+## 4. New getters (all additive, no 1.x getter was renamed)
+
+| Where | Method | Notes |
+|---|---|---|
+| `Product` | `getSupplyDetails()`, `getSupplyDetailByGln($gln)` | one `SupplyDetail` per element, nothing merged |
+| `SupplyDetail` | `getSupplierGln()`, `getSupplierName()`, `getSupplierRole()`, `getSupplierIdentifiers()`, `getAvailability()`, `getAvailabilityName()`, `getReturnsCodeType()`, `getReturnsCode()`, `getReturnsConditions()`, `getSupplyDates()`, `getSupplyDate($role)`, `getOrderTime()`, `getUnpricedItemType()`, `getPrices()` | `getAvailability()` is the code exactly as sent; the library does not decide what is "in stock" |
+| `Price` | `getTerritory()`, `getPriceQualifier()`, `getPriceStatus()`, `getDates()`, `getDate($role)`, `getTaxes()`, `getDiscountCodes()`, `getUnpricedItemType()` | `SupplyDetail::getPrices()` also holds prices without an amount |
+| `Territory` | `getCountriesIncluded()`, `getRegionsIncluded()`, `getCountriesExcluded()`, `getRegionsExcluded()`, `coversCountry($cc, $extraRegions = [])` | only `WORLD` is known; other regions need `$extraRegions` |
+| `Tax` | `getType()`, `getRateCode()`, `getRatePercent()`, `getRatePercentRaw()`, `getTaxableAmount()`, `getTaxAmount()` | a price can carry several |
+| `Product` | `getMarketTerritories()` | `ProductSupply/Market/Territory` |
+| `Product` | `getPresentBlocks()`, `hasBlock($name)`, `getBlockXml($name)` | names are the ONIX 3.0 element names, in message order |
+| `Product` | `getMeasures()`, `getExtents()`, `getHeightMm()`, `getWidthMm()`, `getThicknessMm()`, `getWeightGrams()`, `getPageCount()` | `getHeight()` etc. still return `['value', 'unit', 'unit_name', 'type']` |
+| `Product` | `getImprintGln()`, `getPublishingDates()` | |
+| `Product` | `getResourceVersions($contentType = null)`, `getFrontCoverNear($px = 400)` | |
+| `ResourceVersion` | `getContentType()`, `getUrl()`, `getHeight()`, `getWidth()`, `getBytes()`, `getFilename()`, `getImageFormat()`, `getContentDate($role)`, `getLastUpdated()` | role 17 = last updated |
+| `Title` / `Description` | `getTextCase()`, `getLanguage()` / `getLanguage()` | attribute form, or element form |
+
+Dates are arrays `['role', 'format', 'date']`; the date string is exactly as sent. Reading `dateformat`,
+`textformat`, `textcase` and `language` works as attribute (real DILICOM files) and as element.
+
+### Known limits
+
+* `ExtentUnit 05` is accepted for the page count because the DILICOM checklist asks for it. In ONIX list 24 the
+  code 05 is not "pages" for every sender; `getExtents()` returns the unit so you can check it.
+* Several `SupplyDetail`: the 1.x single-value getters (`getAvailabilityCode()`, `getSupplierGLN()`,
+  `getSupplierName()`) still return the **last** one. Use `getSupplyDetails()` for multi-distribution.
+* The parser reads facts. It does not choose the Morocco price, the availability to show, or the cover to keep.
