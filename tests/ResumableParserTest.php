@@ -1,272 +1,132 @@
 <?php
 
-use PHPUnit\Framework\TestCase;
-use ONIXParser\ResumableOnixParser;
-use ONIXParser\Resume\CheckpointManager;
-use ONIXParser\Resume\ParserState;
-use ONIXParser\Resume\ResumePoint;
-use ONIXParser\Logger;
+namespace ONIXParser\Tests;
 
+use ONIXParser\Tests\Support\OnixFile;
+use ONIXParser\Tests\Support\ProductFactory;
+use ONIXParser\Tests\Support\ResumeProof;
+use PHPUnit\Framework\TestCase;
+
+/**
+ * Resume tests for ChunkOnixParser (the parser the plugin really uses).
+ * The old version of this file tested Resume/* classes and a ResumableOnixParser that no longer exists.
+ *
+ * Every session runs in its own PHP process (tests/tools/resume-runner.php), so "kill" is a real SIGKILL.
+ */
 class ResumableParserTest extends TestCase
 {
-    private $testXmlFile;
-    private $checkpointDir;
-    private $logger;
-    private $checkpointManager;
-    private $parser;
-    
+    private $dir;
+    private $file;
+    /** @var ResumeProof */
+    private $proof;
+
     protected function setUp(): void
     {
-        $this->testXmlFile = __DIR__ . '/fixtures/onix_samples/Sample_ONIX_3.0.xml';
-        $this->checkpointDir = sys_get_temp_dir() . '/test_checkpoints';
-        $this->logger = new Logger(Logger::DEBUG);
-        $this->checkpointManager = new CheckpointManager($this->checkpointDir, $this->logger);
-        $this->parser = new ResumableOnixParser($this->logger, $this->checkpointManager);
-        
-        // Create test checkpoint directory
-        if (!is_dir($this->checkpointDir)) {
-            mkdir($this->checkpointDir, 0755, true);
+        if (!function_exists('posix_kill') || !function_exists('proc_open')) {
+            $this->markTestSkipped('posix and proc_open are needed');
         }
+        $this->dir = sys_get_temp_dir() . '/resume' . uniqid();
+        $this->proof = new ResumeProof($this->dir);
+        // records with prices, taxes, blocks, accents, several sizes
+        $this->file = OnixFile::create(900, function ($i) {
+            $extra = '';
+            if ($i % 3 === 0) {
+                $extra .= '<CollateralDetail><TextContent><TextType>03</TextType><ContentAudience>00</ContentAudience><Text textformat="05">Résumé ' . $i . ' ' . str_repeat('é', $i % 50) . '</Text></TextContent></CollateralDetail>';
+            }
+            $extra .= '<PublishingDetail><Imprint><ImprintIdentifier><ImprintIDType>06</ImprintIDType><IDValue>3052090010015</IDValue></ImprintIdentifier><ImprintName>X</ImprintName></Imprint></PublishingDetail>';
+            return $extra;
+        });
+        // add a price to every record through a second file pass is not needed: prices come from OnixFile supply
     }
-    
+
     protected function tearDown(): void
     {
-        // Clean up test checkpoint directory
-        if (is_dir($this->checkpointDir)) {
-            $files = glob($this->checkpointDir . '/*');
-            foreach ($files as $file) {
-                if (is_file($file)) {
-                    unlink($file);
-                }
-            }
-            rmdir($this->checkpointDir);
+        @unlink($this->file);
+        foreach (glob($this->dir . '/*') ?: [] as $f) {
+            @unlink($f);
         }
+        @rmdir($this->dir);
     }
-    
-    public function testBasicCheckpointCreation()
+
+    private function clean(): array
     {
-        $options = [
-            'enable_checkpoints' => true,
-            'checkpoint_interval' => 5,
-            'limit' => 10,
-        ];
-        
-        $onix = $this->parser->parseFileStreaming($this->testXmlFile, $options);
-        
-        $this->assertInstanceOf('ONIXParser\Model\Onix', $onix);
-        
-        // Check that checkpoints were created
-        $checkpoints = $this->checkpointManager->listCheckpoints();
-        $this->assertGreaterThan(0, count($checkpoints));
+        $this->proof->reset('clean');
+        $r = $this->proof->session($this->file, 'clean', 'full');
+        $this->assertSame(0, $r['exit'], $r['raw']);
+        $this->assertTrue($r['json']['completed']);
+        $this->assertSame(900, $r['json']['count']);
+        return ['sha' => $this->proof->sha('clean'), 'lines' => $this->proof->lines('clean')];
     }
-    
-    public function testCheckpointValidation()
+
+    public function testStopAfterThreeTimesGivesTheSameOutput(): void
     {
-        // Create a test parser state
-        $parserState = ParserState::fromParser(
-            true,
-            'http://www.editeur.org/onix/3.0/reference',
-            true,
-            true,
-            '3.0',
-            null,
-            10,
-            10,
-            0,
-            'processing'
-        );
-        
-        $this->assertTrue($parserState->validate());
-        
-        // Test invalid state
-        $invalidState = ParserState::fromParser(
-            true,
-            'http://www.editeur.org/onix/3.0/reference',
-            true,
-            true,
-            '3.0',
-            null,
-            10,
-            15, // Processed more than total
-            0,
-            'processing'
-        );
-        
-        $this->assertFalse($invalidState->validate());
+        $clean = $this->clean();
+        $this->assertSame(900, $clean['lines']);
+        $r = $this->proof->resumeRun($this->file, 'after', [['after', 222], ['after', 222], ['after', 222]], 100);
+        $this->assertSame(900, $r['lines']);
+        $this->assertSame($clean['sha'], $r['sha']);
     }
-    
-    public function testResumePointSerialization()
+
+    public function testStopBeforeThreeTimesGivesTheSameOutput(): void
     {
-        $parserState = ParserState::fromParser(
-            true,
-            'http://www.editeur.org/onix/3.0/reference',
-            true,
-            true,
-            '3.0',
-            null,
-            5,
-            5,
-            0,
-            'processing'
-        );
-        
-        $resumePoint = new ResumePoint(
-            1000,
-            $this->testXmlFile,
-            md5_file($this->testXmlFile),
-            filesize($this->testXmlFile),
-            '<Product>',
-            'Product',
-            $parserState
-        );
-        
-        // Test serialization
-        $array = $resumePoint->toArray();
-        $this->assertIsArray($array);
-        $this->assertEquals(1000, $array['byte_position']);
-        $this->assertEquals($this->testXmlFile, $array['file_path']);
-        
-        // Test deserialization
-        $restored = ResumePoint::fromArray($array);
-        $this->assertEquals($resumePoint->getBytePosition(), $restored->getBytePosition());
-        $this->assertEquals($resumePoint->getFilePath(), $restored->getFilePath());
+        $clean = $this->clean();
+        $r = $this->proof->resumeRun($this->file, 'before', [['before', 250], ['before', 250], ['before', 250]], 100);
+        $this->assertSame(900, $r['lines']);
+        $this->assertSame($clean['sha'], $r['sha']);
     }
-    
-    public function testCheckpointManagerSaveLoad()
+
+    public function testSigkillThreeTimesGivesTheSameOutput(): void
     {
-        $parserState = ParserState::fromParser(
-            true,
-            'http://www.editeur.org/onix/3.0/reference',
-            true,
-            true,
-            '3.0',
-            null,
-            5,
-            5,
-            0,
-            'processing'
-        );
-        
-        $resumePoint = new ResumePoint(
-            1000,
-            $this->testXmlFile,
-            md5_file($this->testXmlFile),
-            filesize($this->testXmlFile),
-            '<Product>',
-            'Product',
-            $parserState
-        );
-        
-        // Save checkpoint
-        $checkpointFile = $this->checkpointManager->saveCheckpoint($resumePoint);
-        $this->assertFileExists($checkpointFile);
-        
-        // Load checkpoint
-        $loaded = $this->checkpointManager->loadCheckpoint($checkpointFile);
-        $this->assertEquals($resumePoint->getBytePosition(), $loaded->getBytePosition());
-        $this->assertEquals($resumePoint->getFilePath(), $loaded->getFilePath());
-    }
-    
-    public function testParserStats()
-    {
-        $options = [
-            'enable_checkpoints' => true,
-            'checkpoint_interval' => 3,
-            'limit' => 5,
-        ];
-        
-        $this->parser->parseFileStreaming($this->testXmlFile, $options);
-        
-        $stats = $this->parser->getStats();
-        $this->assertIsArray($stats);
-        $this->assertArrayHasKey('session_products', $stats);
-        $this->assertArrayHasKey('checkpoints_enabled', $stats);
-        $this->assertTrue($stats['checkpoints_enabled']);
-    }
-    
-    public function testCheckpointCleanup()
-    {
-        // Create multiple checkpoints
-        $parserState = ParserState::fromParser(
-            true,
-            'http://www.editeur.org/onix/3.0/reference',
-            true,
-            true,
-            '3.0',
-            null,
-            5,
-            5,
-            0,
-            'processing'
-        );
-        
-        // Create several checkpoints
-        for ($i = 0; $i < 5; $i++) {
-            $resumePoint = new ResumePoint(
-                1000 + $i * 100,
-                $this->testXmlFile,
-                md5_file($this->testXmlFile),
-                filesize($this->testXmlFile),
-                '<Product>',
-                'Product',
-                $parserState
-            );
-            
-            $this->checkpointManager->saveCheckpoint($resumePoint, 'test_' . $i);
+        $clean = $this->clean();
+        // checkpoint every 100: a kill after 230 records loses the 30 since the last checkpoint, they are redone
+        $r = $this->proof->resumeRun($this->file, 'kill', [['kill', 230], ['kill', 230], ['kill', 230]], 100);
+        foreach (array_slice($r['sessions'], 0, 3) as $s) {
+            $this->assertNotSame(0, $s['exit'], 'the session must really die');
         }
-        
-        $checkpoints = $this->checkpointManager->listCheckpoints();
-        $this->assertEquals(5, count($checkpoints));
-        
-        // Set max checkpoints to 3 and cleanup
-        $this->checkpointManager->setMaxCheckpoints(3);
-        $cleaned = $this->checkpointManager->cleanupOldCheckpoints();
-        
-        $this->assertEquals(2, $cleaned);
-        
-        $remaining = $this->checkpointManager->listCheckpoints();
-        $this->assertEquals(3, count($remaining));
+        $this->assertSame(900, $r['lines']);
+        $this->assertSame($clean['sha'], $r['sha']);
     }
-    
-    public function testParserStateRestoration()
+
+    public function testMixedStopsGiveTheSameOutput(): void
     {
-        $originalState = ParserState::fromParser(
-            true,
-            'http://www.editeur.org/onix/3.0/reference',
-            true,
-            true,
-            '3.0',
-            null,
-            10,
-            10,
-            0,
-            'processing'
-        );
-        
-        $serialized = $originalState->toArray();
-        $restored = ParserState::fromArray($serialized);
-        
-        $this->assertEquals($originalState->hasNamespace(), $restored->hasNamespace());
-        $this->assertEquals($originalState->getNamespaceURI(), $restored->getNamespaceURI());
-        $this->assertEquals($originalState->getTotalProductCount(), $restored->getTotalProductCount());
-        $this->assertEquals($originalState->getProcessedProductCount(), $restored->getProcessedProductCount());
+        $clean = $this->clean();
+        $r = $this->proof->resumeRun($this->file, 'mixed', [['after', 111], ['kill', 150], ['before', 99], ['kill', 80]], 50);
+        $this->assertSame(900, $r['lines']);
+        $this->assertSame($clean['sha'], $r['sha']);
     }
-    
-    public function testInvalidCheckpointFile()
+
+    public function testOutputIsInFileOrderWithNoRepeat(): void
     {
-        $this->expectException('ONIXParser\Exception\CheckpointException');
-        
-        $invalidFile = $this->checkpointDir . '/invalid.checkpoint';
-        file_put_contents($invalidFile, 'invalid json content');
-        
-        $this->checkpointManager->loadCheckpoint($invalidFile);
+        $this->proof->resumeRun($this->file, 'order', [['after', 300], ['kill', 100]], 50);
+        $refs = [];
+        foreach (file($this->proof->outPath('order')) as $line) {
+            $refs[] = json_decode($line, true)['ref'];
+        }
+        $this->assertSame(array_map(function ($i) {
+            return "rec.$i";
+        }, range(1, 900)), $refs);
     }
-    
-    public function testMissingCheckpointFile()
+
+    public function testFinishedFileLeavesNoCheckpoint(): void
     {
-        $this->expectException('ONIXParser\Exception\CheckpointException');
-        
-        $missingFile = $this->checkpointDir . '/missing.checkpoint';
-        $this->checkpointManager->loadCheckpoint($missingFile);
+        $this->clean();
+        $this->assertFileDoesNotExist($this->proof->cpPath('clean'));
+    }
+
+    public function testRealFileKillThreeTimes(): void
+    {
+        $real = getenv('ONIX_REAL_FILE');
+        if (!$real || !is_file($real)) {
+            $this->markTestSkipped('ONIX_REAL_FILE not set');
+        }
+        $this->proof->reset('realclean');
+        $c = $this->proof->session($real, 'realclean', 'full');
+        $this->assertTrue($c['json']['completed'], $c['raw']);
+        $total = $c['json']['count'];
+        $this->assertGreaterThan(0, $total);
+        $r = $this->proof->resumeRun($real, 'realresume', [['after', 7777], ['kill', 7777], ['before', 7777]], 1000);
+        $this->assertSame($total, $r['lines']);
+        $this->assertSame($this->proof->sha('realclean'), $r['sha']);
+        fwrite(STDERR, sprintf("\nreal file: %d records, sha256 %s, clean %.1fs %.1fMB\n", $total, $r['sha'], $c['json']['seconds'], $c['json']['peak_mb']));
     }
 }

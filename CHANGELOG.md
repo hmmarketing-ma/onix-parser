@@ -5,6 +5,34 @@ All notable changes to the ONIX Parser library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-11-11
+
+DILICOM pipeline rebuild (STORY-879). Details: docs/PARSER-2.0.md.
+
+### Fixed
+- `ProductAvailability` was never read (xpath context). Now read per `SupplyDetail`.
+- Height, width, thickness, weight and page count were always empty (namespace on nested xpath). Units are exposed.
+  Page count accepts `ExtentType 00/03` with `ExtentUnit 03/05`.
+- Checkpoint write is atomic (temp + fsync + rename). No more `md5_file()` of the whole file at every checkpoint.
+- A record larger than the buffer is no longer cut and lost; a file that ends inside a record no longer drops it silently.
+- Two divisions by zero on very fast runs; PHP 8.4 implicit-nullable deprecations; `filesize()` before `file_exists()`.
+- `LIBXML_NONET` on every load. `\r` accepted after `<Product`.
+
+### Added
+- `SupplyDetail`, `Territory`, `Tax`, `ResourceVersion` models; full `Price` model.
+- `Product::getSupplyDetails()`, `getPresentBlocks()`, `hasBlock()`, `getBlockXml()`, `getMarketTerritories()`,
+  `getMeasures()`, `getExtents()`, `getHeightMm()` ..., `getImprintGln()`, `getPublishingDates()`,
+  `getResourceVersions()`, `getFrontCoverNear()`.
+- `ChunkOnixParser::STOP_AFTER`, `STOP_BEFORE`, `setCheckpointStore()`, `setFileHash()`, `setMaxRecordSize()`.
+- `Resume\CheckpointStore`, `Resume\FileCheckpointStore`, `Exception\RecordTooLargeException`, `Exception\TruncatedFileException`.
+- `dateformat` / `textformat` / `textcase` / `language` read as attribute and as element.
+- Real-file field-coverage harness (`tests/tools/field-coverage.php`) and resume proof (`tests/tools/resume-proof.php`).
+
+### Changed (breaking)
+- `ChunkOnixParser::parseWithCheckpoints()` returns a summary array (`processed`, `count`, `position`, `stopped`, `completed`).
+- A damaged checkpoint, or one made for another file, throws `CheckpointException` (it used to restart at byte 0).
+- Minimum PHP 8.0.
+
 ## [1.7.0] - 2025-07-04
 
 ### Added

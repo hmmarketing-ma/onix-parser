@@ -2,6 +2,22 @@
 
 A modern, object-oriented PHP library for parsing ONIX (ONline Information eXchange) XML files. This library supports both ONIX 3.0 namespaced and non-namespaced XML formats.
 
+## What is new in 2.0 (DILICOM pipeline)
+
+Read **[docs/PARSER-2.0.md](docs/PARSER-2.0.md)** first. In short:
+
+- `ProductAvailability`, measures and page count are read correctly (they were empty on real files).
+- `Product::getSupplyDetails()`: one `SupplyDetail` per distributor with its own availability, returns, supply dates,
+  `OrderTime` and `Price[]`. `Price` has territory, qualifier, dates, status, all taxes, discount codes.
+- `Product::getPresentBlocks()` / `getBlockXml($name)`: which ONIX 3.0 blocks a record contained.
+- `ChunkOnixParser`: callback contract `STOP_AFTER` / `STOP_BEFORE`; `CheckpointStore` interface with an atomic file
+  default; no full-file hash; a damaged checkpoint raises an error; a record is never cut (`RecordTooLargeException`,
+  `TruncatedFileException`); results are not accumulated.
+- **Breaking in 2.0:** `parseWithCheckpoints()` returns a summary array instead of the list of callback results;
+  a damaged or foreign checkpoint throws instead of restarting from byte 0; PHP 8.0 minimum.
+
+New public names are listed in [docs/PARSER-2.0.md](docs/PARSER-2.0.md) section 4.
+
 ## Features
 
 - **Full ONIX 3.0 XML Support** - Complete parsing of ONIX 3.0 namespaced and non-namespaced XML
@@ -24,7 +40,7 @@ A modern, object-oriented PHP library for parsing ONIX (ONline Information eXcha
 
 ## Requirements
 
-- PHP 7.4 or higher
+- PHP 8.0 or higher (union types are used; `fsync()` of checkpoints needs 8.1, older versions use `fflush()` only)
 - DOM and SimpleXML extensions (usually included with PHP)
 - Composer for dependency management and autoloading
 

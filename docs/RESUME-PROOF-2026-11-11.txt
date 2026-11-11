@@ -1,0 +1,21 @@
+Resume proof on the real initial file 507693071.xml (401,209,720 bytes, 27,383 records, SHA256SUMS verified).
+Command: php tests/tools/resume-proof.php 507693071.xml     (PHP 8.4.6, macOS laptop)
+Each session is its own PHP process. 'kill' = SIGKILL (exit 9) after N records, no clean exit.
+Checkpoint every 1,000 records. The output file is cut back to the checkpoint's out_size at each start.
+The output is one JSON line per record with every field the 2.0 parser reads (see tests/Support/ProductDump.php).
+
+CLEAN       27383 records  37.1s  peak 8.0 MB  sha256 d479b7c991adabeb3694066b536e44142c38d960c22a4a28035dd64dd1c8554c
+STOP-AFTER  27383 records  IDENTICAL  sha256 d479b7c991adabeb3694066b536e44142c38d960c22a4a28035dd64dd1c8554c
+            sessions: after:7777 exit=0 count=7777 | after:7777 exit=0 count=15554 | after:7777 exit=0 count=23331 | full exit=0 count=27383
+STOP-BEFORE 27383 records  IDENTICAL  sha256 d479b7c991adabeb3694066b536e44142c38d960c22a4a28035dd64dd1c8554c
+            sessions: before:7777 exit=0 count=7777 | before:7777 exit=0 count=15554 | before:7777 exit=0 count=23331 | full exit=0 count=27383
+SIGKILL     27383 records  IDENTICAL  sha256 d479b7c991adabeb3694066b536e44142c38d960c22a4a28035dd64dd1c8554c
+            sessions: kill:7777 exit=9 | kill:7777 exit=9 | kill:7777 exit=9 | full exit=0 count=27383
+MIXED       27383 records  IDENTICAL  sha256 d479b7c991adabeb3694066b536e44142c38d960c22a4a28035dd64dd1c8554c
+            sessions: after:7777 exit=0 count=7777 | kill:7777 exit=9 | before:7777 exit=0 count=22777 | full exit=0 count=27383
+PASS: all variants identical to the clean run
+
+Notes
+* STOP-BEFORE loses no record (the 1.x contract lost #3001 / EAN 9782091575377 in the architect review).
+* After a SIGKILL the next session restarts at the last checkpoint, redoes the records after it, and the output
+  is still byte-identical (no record twice, none missing).
