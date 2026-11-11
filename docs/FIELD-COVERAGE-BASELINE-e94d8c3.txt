@@ -1,0 +1,62 @@
+# Field-coverage baseline at e94d8c3 (before 2.0), file 507693071.xml (initial, 27,383 records)
+# php tests/tools/field-coverage.php 507693071.xml
+Records: 27383
+FIELD                               RAW     PARSER    BAD REC  RESULT
+availability (non-empty)          27383          0      27383  MISMATCH  first: 3133091034825 raw=1 parsed=0
+height                            26031          0      26031  MISMATCH  first: 3133091034825 raw=1 parsed=0
+width                             24917          0      24917  MISMATCH  first: 3133091034825 raw=1 parsed=0
+thickness                         24848          0      24848  MISMATCH  first: 3133091034825 raw=1 parsed=0
+weight                            27083          0      27083  MISMATCH  first: 3133091034825 raw=1 parsed=0
+page count                        24769          0      24769  MISMATCH  first: 3133091034825 raw=1 parsed=0
+supply details                    27383          0      27383  MISMATCH  first: 3133091034825 (no getter)
+supplier GLN (type 06)            27383          0      27383  MISMATCH  first: 3133091034825 (no getter)
+supplier name                     27383          0      27383  MISMATCH  first: 3133091034825 (no getter)
+returns code (type 01)            27383          0      27383  MISMATCH  first: 3133091034825 (no getter)
+supply date role 18                7530          0      27383  MISMATCH  first: 3133091034825 (no getter)
+supply dates (all)                 7530          0      27383  MISMATCH  first: 3133091034825 (no getter)
+order time                            0          0      27383  MISMATCH  first: 3133091034825 (no getter)
+prices                            54675          0      27383  MISMATCH  first: 3133091034825 (no getter)
+price territory                   54675          0      27383  MISMATCH  first: 3133091034825 (no getter)
+price qualifier                   22424          0      27383  MISMATCH  first: 3133091034825 (no getter)
+price status                       4374          0      27383  MISMATCH  first: 3133091034825 (no getter)
+price dates (all)                    54          0      27383  MISMATCH  first: 3133091034825 (no getter)
+price date role 14                   54          0      27383  MISMATCH  first: 3133091034825 (no getter)
+tax composites (all)              27686          0      27383  MISMATCH  first: 3133091034825 (no getter)
+prices with 2+ taxes                342          0      27383  MISMATCH  first: 3133091034825 (no getter)
+discount coded                    54675          0      27383  MISMATCH  first: 3133091034825 (no getter)
+unpriced item type                   39          0      27383  MISMATCH  first: 3133091034825 (no getter)
+present blocks                   116535          0      27383  MISMATCH  first: 3133091034825 (no getter)
+imprint GLN (type 06)             27383          0      27383  MISMATCH  first: 3133091034825 (no getter)
+resource versions                106685          0      27383  MISMATCH  first: 3133091034825 (no getter)
+resource height                   59885          0      27383  MISMATCH  first: 3133091034825 (no getter)
+resource width                    59885          0      27383  MISMATCH  first: 3133091034825 (no getter)
+resource bytes                    94904          0      27383  MISMATCH  first: 3133091034825 (no getter)
+resource date role 17            103615          0      27383  MISMATCH  first: 3133091034825 (no getter)
+Distribution: availability code   MISMATCH
+  01     raw      19  parser       0
+  10     raw     366  parser       0
+  20     raw   14468  parser       0
+  23     raw      31  parser       0
+  30     raw     196  parser       0
+  31     raw    2947  parser       0
+  32     raw      83  parser       0
+  41     raw    2433  parser       0
+  45     raw       3  parser       0
+  46     raw       4  parser       0
+  51     raw    6401  parser       0
+  52     raw     432  parser       0
+Distribution: price type   MISMATCH
+  01     raw   27331  parser       0
+  02     raw    1664  parser       0
+  04     raw   25680  parser       0
+Notification types: {"03":24893,"01":99,"02":2391}
+Block shapes (top 8):
+    19161  DescriptiveDetail+CollateralDetail+PublishingDetail+ProductSupply
+     7462  DescriptiveDetail+CollateralDetail+PublishingDetail+RelatedMaterial+ProductSupply
+      539  DescriptiveDetail+PublishingDetail+ProductSupply
+      143  DescriptiveDetail+PublishingDetail+RelatedMaterial+ProductSupply
+       70  DescriptiveDetail+CollateralDetail+ContentDetail+PublishingDetail+ProductSupply
+        5  DescriptiveDetail+CollateralDetail+ContentDetail+PublishingDetail+RelatedMaterial+ProductSupply
+        3  DescriptiveDetail+ContentDetail+PublishingDetail+ProductSupply
+FAIL: availability (non-empty), height, width, thickness, weight, page count, supply details, supplier GLN (type 06), supplier name, returns code (type 01), supply date role 18, supply dates (all), order time, prices, price territory, price qualifier, price status, price dates (all), price date role 14, tax composites (all), prices with 2+ taxes, discount coded, unpriced item type, present blocks, imprint GLN (type 06), resource versions, resource height, resource width, resource bytes, resource date role 17, distribution: availability code, distribution: price type
+Time 29.9s, peak memory 4.0 MB
