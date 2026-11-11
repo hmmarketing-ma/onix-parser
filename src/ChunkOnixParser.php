@@ -2,6 +2,10 @@
 
 namespace ONIXParser;
 
+use ONIXParser\Exception\CheckpointException;
+use ONIXParser\Resume\CheckpointStore;
+use ONIXParser\Resume\FileCheckpointStore;
+
 /**
  * Chunk-based ONIX Parser
  * 
@@ -13,8 +17,11 @@ class ChunkOnixParser
     /** @var string */
     private $filePath;
     
-    /** @var string */
-    private $checkpointFile;
+    /** @var CheckpointStore */
+    private $checkpointStore;
+
+    /** @var string|null Hash of the ONIX file given by the caller (stored in the checkpoint, never computed here) */
+    private $callerHash = null;
     
     /** @var Logger */
     private $logger;
@@ -31,17 +38,17 @@ class ChunkOnixParser
     /** @var int */
     private $fileSize;
     
-    public function __construct(string $filePath, OnixParser $parser = null, Logger $logger = null)
+    public function __construct(string $filePath, ?OnixParser $parser = null, ?Logger $logger = null)
     {
-        $this->filePath = $filePath;
-        $this->checkpointFile = $filePath . '.chunk_checkpoint';
-        $this->parser = $parser ?: new OnixParser($logger);
-        $this->logger = $logger ?: new Logger();
-        $this->fileSize = filesize($filePath);
-        
         if (!file_exists($filePath)) {
             throw new \Exception("File not found: $filePath");
         }
+
+        $this->filePath = $filePath;
+        $this->checkpointStore = new FileCheckpointStore($filePath . '.chunk_checkpoint');
+        $this->parser = $parser ?: new OnixParser($logger);
+        $this->logger = $logger ?: new Logger();
+        $this->fileSize = filesize($filePath);
         
         // Detect namespace from file header to ensure proper xpath operations
         $this->detectAndSetNamespace();
@@ -89,7 +96,31 @@ class ChunkOnixParser
      */
     public function setCheckpointFile(string $checkpointFile): void
     {
-        $this->checkpointFile = $checkpointFile;
+        $this->checkpointStore = new FileCheckpointStore($checkpointFile);
+    }
+
+    /**
+     * Keep the checkpoint somewhere else than a file (for example in the database, in the
+     * same transaction as the records). See CheckpointStore.
+     */
+    public function setCheckpointStore(CheckpointStore $store): void
+    {
+        $this->checkpointStore = $store;
+    }
+
+    public function getCheckpointStore(): CheckpointStore
+    {
+        return $this->checkpointStore;
+    }
+
+    /**
+     * Hash of the ONIX file, computed by the caller (for example the sha256 it already has in its file
+     * registry). It is stored in each checkpoint and compared on resume. The parser never hashes the file.
+     * When a hash is set and the checkpoint has one, the hash alone decides; otherwise size + mtime decide.
+     */
+    public function setFileHash(?string $hash): void
+    {
+        $this->callerHash = $hash;
     }
 
     /**
@@ -168,7 +199,7 @@ class ChunkOnixParser
                             
                             $elapsed = round(microtime(true) - $startTime, 2);
                             $progress = round(($checkpointPos / $this->fileSize) * 100, 2);
-                            $rate = round($productCount / $elapsed);
+                            $rate = $elapsed > 0 ? round($productCount / $elapsed) : $productCount;
                             
                             $this->logger->info("Checkpoint saved at product {$productCount} - Progress: {$progress}% ({$rate} products/sec)");
                         }
@@ -213,13 +244,13 @@ class ChunkOnixParser
         }
         
         // Only clear checkpoint if we reached EOF naturally (no early termination)
-        if (!$earlyTermination && file_exists($this->checkpointFile)) {
+        if (!$earlyTermination && $this->checkpointStore->load() !== null) {
             $this->logger->info("File parsing completed naturally - reached position " . number_format($lastFilePosition) . " of " . number_format($this->fileSize) . " bytes");
             
             // Additional safety check: verify we actually reached the end
             if ($lastFilePosition >= $this->fileSize) {
                 $this->logger->info("Confirmed EOF reached - clearing checkpoint");
-                unlink($this->checkpointFile);
+                $this->checkpointStore->clear();
             } else {
                 $this->logger->warning("Parsing stopped but EOF not reached - preserving checkpoint for investigation");
                 $this->saveCheckpoint($lastFilePosition, $productCount);
@@ -231,7 +262,7 @@ class ChunkOnixParser
         }
         
         $totalTime = round(microtime(true) - $startTime, 2);
-        $avgRate = round($productCount / $totalTime);
+        $avgRate = $totalTime > 0 ? round($productCount / $totalTime) : $productCount;
         $this->logger->info("Chunk parsing completed: $productCount products in {$totalTime}s (avg: {$avgRate} products/sec)");
         
         return $processedProducts;
@@ -312,7 +343,7 @@ class ChunkOnixParser
                         
                         if ($processedCount % 100 === 0) {
                             $elapsed = round(microtime(true) - $startTime, 2);
-                            $rate = round($processedCount / $elapsed);
+                            $rate = $elapsed > 0 ? round($processedCount / $elapsed) : $processedCount;
                             $this->logger->info("Processed $processedCount products (current: #$totalProductCount) - {$rate} products/sec");
                         }
                         
@@ -638,36 +669,50 @@ class ChunkOnixParser
     
     private function saveCheckpoint(int $position, int $count): void
     {
-        $checkpoint = [
+        // No hash of the file here (it cost 19.5 s of 60 s on 401 MB). Size + mtime + the caller's hash.
+        $this->checkpointStore->save([
+            'version' => 2,
             'position' => $position,
             'count' => $count,
             'timestamp' => time(),
             'file_size' => $this->fileSize,
-            'file_hash' => md5_file($this->filePath),
-            'chunk_size' => $this->chunkSize
-        ];
-        
-        file_put_contents($this->checkpointFile, json_encode($checkpoint, JSON_PRETTY_PRINT));
+            'file_mtime' => filemtime($this->filePath),
+            'caller_hash' => $this->callerHash,
+            'chunk_size' => $this->chunkSize,
+        ]);
     }
-    
+
+    /**
+     * Load and check the checkpoint.
+     *
+     * @return array|null null = no checkpoint (fresh start)
+     * @throws CheckpointException damaged checkpoint, or the ONIX file is not the one it was made for
+     */
     private function loadCheckpoint(): ?array
     {
-        if (!file_exists($this->checkpointFile)) {
+        $checkpoint = $this->checkpointStore->load();
+        if ($checkpoint === null) {
             return null;
         }
-        
-        $checkpoint = json_decode(file_get_contents($this->checkpointFile), true);
-        
-        // Validate checkpoint is still valid
-        if ($checkpoint && isset($checkpoint['file_hash'])) {
-            $currentHash = md5_file($this->filePath);
-            if ($checkpoint['file_hash'] !== $currentHash) {
-                $this->logger->warning("Checkpoint file hash mismatch - file may have changed, starting fresh");
-                unlink($this->checkpointFile);
-                return null;
-            }
+
+        // Size must always match (old checkpoints have it too)
+        if (isset($checkpoint['file_size']) && (int)$checkpoint['file_size'] !== $this->fileSize) {
+            throw CheckpointException::fileIntegrityFailed($this->filePath);
         }
-        
+
+        if (isset($checkpoint['position']) && $checkpoint['position'] > $this->fileSize) {
+            throw CheckpointException::validationFailed("position {$checkpoint['position']} is beyond the end of the file ($this->fileSize bytes)");
+        }
+
+        // Identity: the caller's hash decides when both sides have one, else the modification time
+        if ($this->callerHash !== null && !empty($checkpoint['caller_hash'])) {
+            if (!hash_equals((string)$checkpoint['caller_hash'], $this->callerHash)) {
+                throw CheckpointException::fileIntegrityFailed($this->filePath);
+            }
+        } elseif (isset($checkpoint['file_mtime']) && (int)$checkpoint['file_mtime'] !== filemtime($this->filePath)) {
+            throw CheckpointException::fileIntegrityFailed($this->filePath);
+        }
+
         return $checkpoint;
     }
     
@@ -676,13 +721,12 @@ class ChunkOnixParser
      */
     public function clearCheckpoint(): void
     {
-        if (file_exists($this->checkpointFile)) {
-            unlink($this->checkpointFile);
-        }
+        $this->checkpointStore->clear();
     }
     
     /**
-     * Get checkpoint information
+     * Get checkpoint information (null = none). Throws CheckpointException when it is damaged or
+     * does not belong to this file.
      */
     public function getCheckpointInfo(): ?array
     {
