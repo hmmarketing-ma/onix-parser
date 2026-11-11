@@ -174,6 +174,21 @@ class FieldMappings
                 'supplier_name' => ['./onix:Supplier/onix:SupplierName', './Supplier/SupplierName'],
                 'supplier_role' => ['./onix:Supplier/onix:SupplierRole', './Supplier/SupplierRole'],
                 'gln' => ['./onix:Supplier/onix:SupplierIdentifier[onix:SupplierIDType="06"]/onix:IDValue', './Supplier/SupplierIdentifier[SupplierIDType="06"]/IDValue'],
+                // Relative to a SupplyDetail node
+                'supplier_identifiers' => ['./onix:Supplier/onix:SupplierIdentifier', './Supplier/SupplierIdentifier'],
+                'supplier_id_type' => ['./onix:SupplierIDType', './SupplierIDType'],
+                'supplier_id_value' => ['./onix:IDValue', './IDValue'],
+                'returns_conditions' => ['./onix:ReturnsConditions', './ReturnsConditions'],
+                'returns_code_type' => ['./onix:ReturnsCodeType', './ReturnsCodeType'],
+                'returns_code' => ['./onix:ReturnsCode', './ReturnsCode'],
+                'supply_dates' => ['./onix:SupplyDate', './SupplyDate'],
+                'supply_date_role' => ['./onix:SupplyDateRole', './SupplyDateRole'],
+                'order_time' => ['./onix:OrderTime', './OrderTime'],
+                'unpriced_item_type' => ['./onix:UnpricedItemType', './UnpricedItemType'],
+                // Date composites (SupplyDate, PriceDate, ContentDate, PublishingDate): format as element, then as attribute
+                'date_format_element' => ['./onix:DateFormat', './DateFormat'],
+                'date_format_attribute' => ['./onix:Date/@dateformat', './Date/@dateformat'],
+                'date_value' => ['./onix:Date', './Date'],
             ],
             
             // Product availability

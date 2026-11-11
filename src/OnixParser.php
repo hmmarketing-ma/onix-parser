@@ -7,6 +7,7 @@ use ONIXParser\Model\Onix;
 use ONIXParser\Model\Product;
 use ONIXParser\Model\Subject;
 use ONIXParser\Model\Price;
+use ONIXParser\Model\SupplyDetail;
 use ONIXParser\Model\Title;
 use ONIXParser\Logger;
 use ONIXParser\FieldMappings;
@@ -1194,22 +1195,54 @@ class OnixParser
     {
         // Get supply details
         $supplyDetailNodes = $this->queryNodesWithContext($this->fieldMappings['supply']['supply_details'], $productNode, $localXpath);
+        $supplyMap = $this->fieldMappings['supply'];
         
         foreach ($supplyDetailNodes as $supplyNode) {
+            // Full model: one SupplyDetail object per <SupplyDetail>, nothing merged
+            $detail = new SupplyDetail();
+
             // Parse supplier information
-            $supplierName = $this->getNodeValueWithContext($this->fieldMappings['supply']['supplier_name'], $supplyNode, $localXpath);
-            $supplierRole = $this->getNodeValueWithContext($this->fieldMappings['supply']['supplier_role'], $supplyNode, $localXpath);
-            
+            $supplierName = $this->getNodeValueWithContext($supplyMap['supplier_name'], $supplyNode, $localXpath);
+            $supplierRole = $this->getNodeValueWithContext($supplyMap['supplier_role'], $supplyNode, $localXpath);
+            $detail->setSupplierName($supplierName ?: null);
+            $detail->setSupplierRole($supplierRole ?: null);
+
+            foreach ($this->queryNodesWithContext($supplyMap['supplier_identifiers'], $supplyNode, $localXpath) as $idNode) {
+                $idType = $this->getNodeValueWithContext($supplyMap['supplier_id_type'], $idNode, $localXpath);
+                $idValue = $this->getNodeValueWithContext($supplyMap['supplier_id_value'], $idNode, $localXpath);
+                if ($idType !== null && $idValue !== null && $idValue !== '') {
+                    $detail->addSupplierIdentifier($idType, $idValue);
+                }
+            }
+
+            // Supplier GLN (SupplierIDType 06)
+            $supplierGLN = $this->getNodeValueWithContext($supplyMap['gln'], $supplyNode, $localXpath);
+            $detail->setSupplierGln($supplierGLN ?: null);
+
+            // Availability (List 65), exactly as sent
+            $availability = $this->getNodeValueWithContext($this->fieldMappings['stock']['availability'], $supplyNode, $localXpath);
+            $detail->setAvailability($availability ?: null);
+
+            // Returns, supply dates, order time, unpriced item type
+            foreach ($this->queryNodesWithContext($supplyMap['returns_conditions'], $supplyNode, $localXpath) as $retNode) {
+                $detail->addReturnsConditions(
+                    $this->getNodeValueWithContext($supplyMap['returns_code_type'], $retNode, $localXpath),
+                    $this->getNodeValueWithContext($supplyMap['returns_code'], $retNode, $localXpath)
+                );
+            }
+            foreach ($this->readDateComposites($supplyMap['supply_dates'], $supplyMap['supply_date_role'], $supplyNode, $localXpath) as $d) {
+                $detail->addSupplyDate($d['role'], $d['format'], $d['date']);
+            }
+            $detail->setOrderTime($this->getNodeValueWithContext($supplyMap['order_time'], $supplyNode, $localXpath));
+            $detail->setUnpricedItemType($this->getNodeValueWithContext($supplyMap['unpriced_item_type'], $supplyNode, $localXpath));
+
+            // Legacy single-value getters: the last SupplyDetail still wins here (old behaviour, kept)
             if ($supplierName) {
                 $product->setSupplierName($supplierName);
             }
-            
             if ($supplierRole) {
                 $product->setSupplierRole($supplierRole);
             }
-            
-            // Parse availability
-            $availability = $this->getNodeValueWithContext($this->fieldMappings['stock']['availability'], $supplyNode, $localXpath);
             if ($availability) {
                 $product->setAvailabilityCode($availability);
                 
@@ -1217,9 +1250,6 @@ class OnixParser
                 $availabilityStatus = $this->codeMaps['availability_code'][$availability] ?? 'unknown';
                 $product->setAvailable($availabilityStatus === 'available');
             }
-
-            // Extract and set supplier GLN
-            $supplierGLN = $this->getNodeValueWithContext($this->fieldMappings['supply']['gln'], $supplyNode, $localXpath);
             if ($supplierGLN) {
                 $product->setSupplierGLN($supplierGLN);
             }
@@ -1228,46 +1258,91 @@ class OnixParser
             $priceNodes = $this->queryNodesWithContext($this->fieldMappings['pricing']['price_nodes'], $supplyNode, $localXpath);
             
             foreach ($priceNodes as $priceNode) {
-                $price = new Price();
+                $price = $this->parsePrice($priceNode, $localXpath);
+                $detail->addPrice($price);
 
-                // Get tax information
-                $taxType = $this->getNodeValueWithContext($this->fieldMappings['pricing']['tax_type'], $priceNode, $localXpath);
-                if ($taxType) {
-                    $price->setTaxType($taxType);
-                }
-
-                $taxRateCode = $this->getNodeValueWithContext($this->fieldMappings['pricing']['tax_rate_code'], $priceNode, $localXpath);
-                if ($taxRateCode) {
-                    $price->setTaxRateCode($taxRateCode);
-                }
-                
-                // Get price type
-                $priceType = $this->getNodeValueWithContext($this->fieldMappings['pricing']['price_type'], $priceNode, $localXpath);
-                if ($priceType) {
-                    $price->setType($priceType);
-                }
-                
-                // Get price amount and currency
-                $priceAmount = $this->getNodeValueWithContext($this->fieldMappings['pricing']['price_amount'], $priceNode, $localXpath);
-                $currency = $this->getNodeValueWithContext($this->fieldMappings['pricing']['currency_code'], $priceNode, $localXpath);
-                
-                if ($priceAmount) {
-                    $price->setAmount((float)$priceAmount);
-                    
-                    if ($currency) {
-                        $price->setCurrency($currency);
-                    }
-                    
-                    // Get tax rate if available
-                    $taxRate = $this->getNodeValueWithContext($this->fieldMappings['pricing']['tax_rate_percent'], $priceNode, $localXpath);
-                    if ($taxRate) {
-                        $price->setTaxRate((float)$taxRate);
-                    }
-                    
+                // Legacy flat list: only prices that have an amount
+                if ($price->getAmount() !== null) {
                     $product->addPrice($price);
                 }
             }
+
+            $product->addSupplyDetail($detail);
         }
+    }
+
+    /**
+     * Parse one <Price> composite.
+     *
+     * @param \DOMNode $priceNode
+     * @param \DOMXPath|null $localXpath
+     * @return Price
+     */
+    private function parsePrice(\DOMNode $priceNode, ?\DOMXPath $localXpath = null): Price
+    {
+        $map = $this->fieldMappings['pricing'];
+        $price = new Price();
+
+        // Tax information (first <Tax>, legacy getters)
+        $taxType = $this->getNodeValueWithContext($map['tax_type'], $priceNode, $localXpath);
+        if ($taxType) {
+            $price->setTaxType($taxType);
+        }
+
+        $taxRateCode = $this->getNodeValueWithContext($map['tax_rate_code'], $priceNode, $localXpath);
+        if ($taxRateCode) {
+            $price->setTaxRateCode($taxRateCode);
+        }
+
+        // Price type
+        $priceType = $this->getNodeValueWithContext($map['price_type'], $priceNode, $localXpath);
+        if ($priceType) {
+            $price->setType($priceType);
+        }
+
+        // Price amount and currency
+        $priceAmount = $this->getNodeValueWithContext($map['price_amount'], $priceNode, $localXpath);
+        $currency = $this->getNodeValueWithContext($map['currency_code'], $priceNode, $localXpath);
+
+        if ($priceAmount) {
+            $price->setAmount((float)$priceAmount);
+
+            // Tax rate (first <Tax>, legacy getter)
+            $taxRate = $this->getNodeValueWithContext($map['tax_rate_percent'], $priceNode, $localXpath);
+            if ($taxRate) {
+                $price->setTaxRate((float)$taxRate);
+            }
+        }
+        if ($currency) {
+            $price->setCurrency($currency);
+        }
+
+        return $price;
+    }
+
+    /**
+     * Read date composites such as <SupplyDate><SupplyDateRole/><DateFormat/><Date/></SupplyDate>.
+     * The format is read from the <DateFormat> element, or from the dateformat attribute of <Date>.
+     * The date is returned exactly as sent.
+     *
+     * @param array $nodePaths XPaths of the composites, relative to $contextNode
+     * @param array $rolePaths XPaths of the role element, relative to a composite
+     * @return array<int,array{role:?string,format:?string,date:?string}>
+     */
+    private function readDateComposites(array $nodePaths, array $rolePaths, \DOMNode $contextNode, ?\DOMXPath $localXpath = null): array
+    {
+        $out = [];
+        $supplyMap = $this->fieldMappings['supply'];
+        foreach ($this->queryNodesWithContext($nodePaths, $contextNode, $localXpath) as $node) {
+            $format = $this->getNodeValueWithContext($supplyMap['date_format_element'], $node, $localXpath)
+                ?: $this->getNodeValueWithContext($supplyMap['date_format_attribute'], $node, $localXpath);
+            $out[] = [
+                'role' => $this->getNodeValueWithContext($rolePaths, $node, $localXpath),
+                'format' => $format ?: null,
+                'date' => $this->getNodeValueWithContext($supplyMap['date_value'], $node, $localXpath),
+            ];
+        }
+        return $out;
     }
 
     /**

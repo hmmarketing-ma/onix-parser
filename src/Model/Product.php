@@ -125,6 +125,11 @@ class Product
     private $xml;
 
     /**
+     * @var SupplyDetail[] One object per <SupplyDetail> (supplier, availability, returns, dates, prices)
+     */
+    private $supplyDetails = [];
+
+    /**
      * @var array<int,array{type:string,value:string,unit:?string}>|null Measures read by the parser (null = not parsed)
      */
     private $measures = null;
@@ -1089,6 +1094,36 @@ class Product
         
         $availabilityMap = \ONIXParser\CodeMaps::getAvailabilityCodeMap();
         return $availabilityMap[$this->availabilityCode] ?? null;
+    }
+
+    /**
+     * Every <SupplyDetail> of the record, in file order. Nothing is merged: with two distributors
+     * you get two objects, each with its own availability and prices.
+     *
+     * @return SupplyDetail[]
+     */
+    public function getSupplyDetails(): array
+    {
+        return $this->supplyDetails;
+    }
+
+    public function addSupplyDetail(SupplyDetail $detail): self
+    {
+        $this->supplyDetails[] = $detail;
+        return $this;
+    }
+
+    /**
+     * The SupplyDetail of one supplier, found by its GLN (SupplierIDType 06), or null.
+     */
+    public function getSupplyDetailByGln(string $gln): ?SupplyDetail
+    {
+        foreach ($this->supplyDetails as $detail) {
+            if ($detail->getSupplierGln() === $gln) {
+                return $detail;
+            }
+        }
+        return null;
     }
 
     /**
