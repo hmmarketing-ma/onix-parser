@@ -178,9 +178,10 @@ class FieldMappings
             
             // Product availability
             'stock' => [
+                // Relative to a SupplyDetail node (the context node is the SupplyDetail itself)
                 'availability' => [
-                    './onix:ProductSupply/onix:SupplyDetail/onix:ProductAvailability', 
-                    './ProductSupply/SupplyDetail/ProductAvailability'
+                    './onix:ProductAvailability',
+                    './ProductAvailability'
                 ],
                 'on_sale_date' => [
                     ".//onix:SupplyDate[onix:SupplyDateRole='02']/onix:Date",
