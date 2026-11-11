@@ -503,6 +503,9 @@ class OnixParser
         // Parse measures and extents (height, width, thickness, weight, pages)
         $this->parsePhysical($importedNode, $product, $xpath);
 
+        // Which of the six ONIX 3.0 blocks did this record contain?
+        $this->parsePresentBlocks($importedNode, $product);
+
         // Parse supply details (availability, prices)
         $this->parseSupply($importedNode, $product, $xpath);
         
@@ -682,6 +685,9 @@ class OnixParser
         
         // Parse measures and extents (height, width, thickness, weight, pages)
         $this->parsePhysical($productNode, $product);
+
+        // Which of the six ONIX 3.0 blocks did this record contain?
+        $this->parsePresentBlocks($productNode, $product);
 
         // Parse supply details (availability, prices)
         $this->parseSupply($productNode, $product);
@@ -1150,6 +1156,24 @@ class OnixParser
                 $product->setProductFormName($this->codeMaps['product_form'][$formCode]);
             }
         }
+    }
+
+    /**
+     * Record the ONIX 3.0 blocks that are direct children of the Product element.
+     * Matches on the local name, so it works with or without a namespace.
+     *
+     * @param \DOMNode $productNode
+     * @param Product $product
+     */
+    private function parsePresentBlocks(\DOMNode $productNode, Product $product): void
+    {
+        $found = [];
+        foreach ($productNode->childNodes as $child) {
+            if ($child->nodeType === XML_ELEMENT_NODE && in_array($child->localName, Product::BLOCKS, true)) {
+                $found[] = $child->localName;
+            }
+        }
+        $product->setPresentBlocks($found);
     }
 
     /**

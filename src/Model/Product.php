@@ -130,6 +130,16 @@ class Product
     private $supplyDetails = [];
 
     /**
+     * ONIX 3.0 block element names, in message order.
+     */
+    public const BLOCKS = ['DescriptiveDetail', 'CollateralDetail', 'ContentDetail', 'PublishingDetail', 'RelatedMaterial', 'ProductSupply'];
+
+    /**
+     * @var string[]|null Blocks present in the record (null = not set by the parser)
+     */
+    private $presentBlocks = null;
+
+    /**
      * @var Territory[] Market territories of the ProductSupply
      */
     private $marketTerritories = [];
@@ -1116,6 +1126,60 @@ class Product
     {
         $this->supplyDetails[] = $detail;
         return $this;
+    }
+
+    /**
+     * Set the block names found in the record (done by the parser).
+     *
+     * @param string[] $blocks
+     */
+    public function setPresentBlocks(array $blocks): self
+    {
+        $this->presentBlocks = array_values(array_intersect(self::BLOCKS, $blocks));
+        return $this;
+    }
+
+    /**
+     * ONIX 3.0 blocks that this record actually contains, by element name and in message order:
+     * DescriptiveDetail, CollateralDetail, ContentDetail, PublishingDetail, RelatedMaterial, ProductSupply.
+     *
+     * In a DILICOM update (04) a block that is absent was not sent: it is "unchanged", not "deleted".
+     *
+     * @return string[]
+     */
+    public function getPresentBlocks(): array
+    {
+        if ($this->presentBlocks !== null) {
+            return $this->presentBlocks;
+        }
+        // Product built by hand with only XML: derive it
+        $found = [];
+        if ($this->xml) {
+            foreach (self::BLOCKS as $block) {
+                if ($this->xml->xpath("*[local-name()='" . $block . "']")) {
+                    $found[] = $block;
+                }
+            }
+        }
+        return $found;
+    }
+
+    public function hasBlock(string $name): bool
+    {
+        return in_array($name, $this->getPresentBlocks(), true);
+    }
+
+    /**
+     * Raw XML of one block (the element with all its children), or null when the block is absent.
+     * Only the six ONIX 3.0 block names are accepted.
+     */
+    public function getBlockXml(string $name): ?string
+    {
+        if (!in_array($name, self::BLOCKS, true) || !$this->xml) {
+            return null;
+        }
+        $nodes = $this->xml->xpath("*[local-name()='" . $name . "']");
+        return $nodes ? $nodes[0]->asXML() : null;
     }
 
     /**

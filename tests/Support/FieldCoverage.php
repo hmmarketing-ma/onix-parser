@@ -80,6 +80,13 @@ class FieldCoverage
             $parsedValue = $parsed['counts'][$field] ?? null;
             $this->tally($field, $rawValue, $parsedValue, $ref);
         }
+        // block shape, record by record: the exact block names, not only how many
+        if (method_exists($product, 'getPresentBlocks')) {
+            $shape = $product->getPresentBlocks() ? implode('+', $product->getPresentBlocks()) : '(none)';
+            $this->tally('block shape (per record)', 1, $shape === $raw['shape'] ? 1 : 0, $ref . " raw={$raw['shape']} parsed=$shape");
+        } else {
+            $this->tally('block shape (per record)', 1, null, $ref);
+        }
         foreach ($raw['dist'] as $name => $codes) {
             foreach ($codes as $code => $n) {
                 $this->dist[$name]['raw'][$code] = ($this->dist[$name]['raw'][$code] ?? 0) + $n;
