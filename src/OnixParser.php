@@ -497,6 +497,9 @@ class OnixParser
         // Parse publication dates
         $this->parsePublicationDates($importedNode, $product, $xpath);
         
+        // Parse measures and extents (height, width, thickness, weight, pages)
+        $this->parsePhysical($importedNode, $product, $xpath);
+
         // Parse supply details (availability, prices)
         $this->parseSupply($importedNode, $product, $xpath);
         
@@ -674,6 +677,9 @@ class OnixParser
         // Parse publication dates
         $this->parsePublicationDates($productNode, $product);
         
+        // Parse measures and extents (height, width, thickness, weight, pages)
+        $this->parsePhysical($productNode, $product);
+
         // Parse supply details (availability, prices)
         $this->parseSupply($productNode, $product);
         
@@ -1141,6 +1147,40 @@ class OnixParser
                 $product->setProductFormName($this->codeMaps['product_form'][$formCode]);
             }
         }
+    }
+
+    /**
+     * Parse measures (MeasureType / Measurement / MeasureUnitCode) and extents
+     * (ExtentType / ExtentValue / ExtentUnit). The values are read here, with the
+     * namespace-aware XPath of this parser, and stored raw on the Product.
+     *
+     * @param \DOMNode $productNode
+     * @param Product $product
+     * @param \DOMXPath|null $localXpath
+     */
+    private function parsePhysical(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
+    {
+        $map = $this->fieldMappings['physical'];
+
+        $measures = [];
+        foreach ($this->queryNodesWithContext($map['measures'], $productNode, $localXpath) as $node) {
+            $measures[] = [
+                'type' => $this->getNodeValueWithContext($map['measure_type'], $node, $localXpath),
+                'value' => $this->getNodeValueWithContext($map['measure_value'], $node, $localXpath),
+                'unit' => $this->getNodeValueWithContext($map['measure_unit'], $node, $localXpath),
+            ];
+        }
+        $product->setMeasures($measures);
+
+        $extents = [];
+        foreach ($this->queryNodesWithContext($map['extents'], $productNode, $localXpath) as $node) {
+            $extents[] = [
+                'type' => $this->getNodeValueWithContext($map['extent_type'], $node, $localXpath),
+                'value' => $this->getNodeValueWithContext($map['extent_value'], $node, $localXpath),
+                'unit' => $this->getNodeValueWithContext($map['extent_unit'], $node, $localXpath),
+            ];
+        }
+        $product->setExtents($extents);
     }
 
     /**

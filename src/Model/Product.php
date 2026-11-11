@@ -123,6 +123,16 @@ class Product
      * @var \SimpleXMLElement Original XML
      */
     private $xml;
+
+    /**
+     * @var array<int,array{type:string,value:string,unit:?string}>|null Measures read by the parser (null = not parsed)
+     */
+    private $measures = null;
+
+    /**
+     * @var array<int,array{type:string,value:string,unit:?string}>|null Extents read by the parser (null = not parsed)
+     */
+    private $extents = null;
     
     /**
      * @var string Publisher name (derived from supplier or imprint)
@@ -1082,40 +1092,127 @@ class Product
     }
 
     /**
-     * Get page count from product extent information
-     * Uses FieldMappings for XPath queries
-     * 
+     * Set the measures read by the parser (MeasureType, Measurement, MeasureUnitCode).
+     *
+     * @param array $measures list of ['type' => '01', 'value' => '215', 'unit' => 'mm']
+     * @return self
+     */
+    public function setMeasures(array $measures)
+    {
+        $this->measures = $measures;
+        return $this;
+    }
+
+    /**
+     * All measures of the record: list of ['type', 'value', 'unit'].
+     *
+     * @return array
+     */
+    public function getMeasures()
+    {
+        return $this->measures ?? [];
+    }
+
+    /**
+     * Set the extents read by the parser (ExtentType, ExtentValue, ExtentUnit).
+     *
+     * @param array $extents list of ['type' => '00', 'value' => '112', 'unit' => '03']
+     * @return self
+     */
+    public function setExtents(array $extents)
+    {
+        $this->extents = $extents;
+        return $this;
+    }
+
+    /**
+     * All extents of the record: list of ['type', 'value', 'unit'].
+     *
+     * @return array
+     */
+    public function getExtents()
+    {
+        return $this->extents ?? [];
+    }
+
+    /**
+     * Get page count from product extent information.
+     *
+     * Accepts ExtentUnit 03 (pages, real DILICOM files) and 05 (checklist). Preference order:
+     * type 00 + unit 03, type 03 + unit 03, type 00 + unit 05, type 03 + unit 05,
+     * then the old behaviour (type 00 or 07 with no unit given).
+     *
      * @return int|null Number of pages
      */
     public function getPageCount()
     {
+        if ($this->extents === null) {
+            return $this->getPageCountFromXml();
+        }
+
+        $best = null;
+        $bestRank = PHP_INT_MAX;
+        foreach ($this->extents as $extent) {
+            $type = $extent['type'] ?? null;
+            $unit = $extent['unit'] ?? null;
+            $value = trim((string)($extent['value'] ?? ''));
+            if ($value === '' || !ctype_digit($value) || (int)$value <= 0) {
+                continue;
+            }
+            $rank = null;
+            if ($unit === '03' && $type === '00') {
+                $rank = 1;
+            } elseif ($unit === '03' && $type === '03') {
+                $rank = 2;
+            } elseif ($unit === '05' && $type === '00') {
+                $rank = 3;
+            } elseif ($unit === '05' && $type === '03') {
+                $rank = 4;
+            } elseif (($unit === null || $unit === '') && ($type === '00' || $type === '07')) {
+                $rank = 5;
+            }
+            if ($rank !== null && $rank < $bestRank) {
+                $best = (int)$value;
+                $bestRank = $rank;
+            }
+        }
+        return $best;
+    }
+
+    /**
+     * Old path for Product objects built by hand with only an XML string.
+     */
+    private function getPageCountFromXml()
+    {
         if (!$this->xml) {
             return null;
         }
-
-        $mappings = \ONIXParser\FieldMappings::getMappings();
-        $extentPaths = $mappings['physical']['extents'];
-        
-        // Find extent nodes
-        $extents = $this->xml->xpath($extentPaths[0]) ?: $this->xml->xpath($extentPaths[1]);
-        
-        if ($extents) {
-            $typePaths = $mappings['physical']['extent_type'];
-            $valuePaths = $mappings['physical']['extent_value'];
-            
-            foreach ($extents as $extent) {
-                $type = $this->safeXpath($extent, $typePaths);
-                $type = $type ? (string)$type[0] : null;
-                
-                // ExtentType 00 = Main content page count, 07 = Total numbered pages
-                if ($type === '00' || $type === '07') {
-                    $value = $this->safeXpath($extent, $valuePaths);
-                    return $value ? (int)$value[0] : null;
-                }
-            }
+        $nodes = $this->xml->xpath("//*[local-name()='DescriptiveDetail']/*[local-name()='Extent']");
+        $extents = [];
+        foreach ($nodes ?: [] as $node) {
+            $extents[] = [
+                'type' => $this->childText($node, 'ExtentType'),
+                'value' => $this->childText($node, 'ExtentValue'),
+                'unit' => $this->childText($node, 'ExtentUnit'),
+            ];
         }
-        
-        return null;
+        $clone = clone $this;
+        $clone->extents = $extents;
+        $clone->xml = null;
+        return $clone->getPageCount();
+    }
+
+    /**
+     * Text of a direct child, ignoring namespaces.
+     */
+    private function childText(\SimpleXMLElement $node, string $name): ?string
+    {
+        $found = $node->xpath("*[local-name()='" . $name . "']");
+        if (!$found) {
+            return null;
+        }
+        $value = trim((string)$found[0]);
+        return $value === '' ? null : $value;
     }
 
     /**
@@ -1268,51 +1365,102 @@ class Product
     }
 
     /**
-     * Get measurement by type using FieldMappings
-     * 
+     * Get measurement by type.
+     *
      * @param string $measureType ONIX measure type code
-     * @return array|null Array with 'value', 'unit', and 'unit_name' keys
+     * @return array|null ['value' => float, 'unit' => 'mm', 'unit_name' => 'Millimeters', 'type' => '01']
      */
     private function getMeasurement($measureType)
     {
-        if (!$this->xml) {
-            return null;
-        }
-
-        $mappings = \ONIXParser\FieldMappings::getMappings();
-        $measurePaths = $mappings['physical']['measures'];
-        
-        // Find measure nodes
-        $measures = $this->xml->xpath($measurePaths[0]) ?: $this->xml->xpath($measurePaths[1]);
-        
-        if ($measures) {
-            $typePaths = $mappings['physical']['measure_type'];
-            $valuePaths = $mappings['physical']['measure_value'];
-            $unitPaths = $mappings['physical']['measure_unit'];
-            
-            foreach ($measures as $measure) {
-                $type = $this->safeXpath($measure, $typePaths);
-                $type = $type ? (string)$type[0] : null;
-                
-                if ($type === $measureType) {
-                    $value = $this->safeXpath($measure, $valuePaths);
-                    $unit = $this->safeXpath($measure, $unitPaths);
-                    
-                    if ($value) {
-                        $unitCode = $unit ? (string)$unit[0] : null;
-                        $unitMap = \ONIXParser\CodeMaps::getMeasureUnitMap();
-                        
-                        return [
-                            'value' => (float)$value[0],
-                            'unit' => $unitCode,
-                            'unit_name' => $unitCode ? ($unitMap[$unitCode] ?? $unitCode) : null
-                        ];
-                    }
-                }
+        $measures = $this->measures;
+        if ($measures === null) {
+            if (!$this->xml) {
+                return null;
+            }
+            $measures = [];
+            $nodes = $this->xml->xpath("//*[local-name()='DescriptiveDetail']/*[local-name()='Measure']");
+            foreach ($nodes ?: [] as $node) {
+                $measures[] = [
+                    'type' => $this->childText($node, 'MeasureType'),
+                    'value' => $this->childText($node, 'Measurement'),
+                    'unit' => $this->childText($node, 'MeasureUnitCode'),
+                ];
             }
         }
-        
+
+        foreach ($measures as $measure) {
+            if (($measure['type'] ?? null) !== $measureType) {
+                continue;
+            }
+            $value = trim((string)($measure['value'] ?? ''));
+            if ($value === '' || !is_numeric($value)) {
+                continue;
+            }
+            $unitCode = $measure['unit'] ?? null;
+            $unitMap = \ONIXParser\CodeMaps::getMeasureUnitMap();
+            return [
+                'value' => (float)$value,
+                'unit' => $unitCode,
+                'unit_name' => $unitCode ? ($unitMap[$unitCode] ?? $unitCode) : null,
+                'type' => $measureType,
+            ];
+        }
+
         return null;
+    }
+
+    /**
+     * Height in millimetres (converted from the unit the sender used), or null.
+     *
+     * @return float|null
+     */
+    public function getHeightMm()
+    {
+        return self::toMillimetres($this->getHeight());
+    }
+
+    /**
+     * Width in millimetres, or null.
+     *
+     * @return float|null
+     */
+    public function getWidthMm()
+    {
+        return self::toMillimetres($this->getWidth());
+    }
+
+    /**
+     * Thickness in millimetres, or null.
+     *
+     * @return float|null
+     */
+    public function getThicknessMm()
+    {
+        return self::toMillimetres($this->getThickness());
+    }
+
+    /**
+     * Weight in grams (converted from the unit the sender used), or null.
+     *
+     * @return float|null
+     */
+    public function getWeightGrams()
+    {
+        $w = $this->getWeight();
+        if (!$w) {
+            return null;
+        }
+        $factor = ['gr' => 1.0, 'g' => 1.0, 'kg' => 1000.0, 'oz' => 28.349523125, 'lb' => 453.59237][$w['unit']] ?? null;
+        return $factor === null ? null : round($w['value'] * $factor, 2);
+    }
+
+    private static function toMillimetres($m)
+    {
+        if (!$m) {
+            return null;
+        }
+        $factor = ['mm' => 1.0, 'cm' => 10.0, 'in' => 25.4, 'ft' => 304.8][$m['unit']] ?? null;
+        return $factor === null ? null : round($m['value'] * $factor, 2);
     }
 
     /**
