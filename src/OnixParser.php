@@ -8,6 +8,8 @@ use ONIXParser\Model\Product;
 use ONIXParser\Model\Subject;
 use ONIXParser\Model\Price;
 use ONIXParser\Model\SupplyDetail;
+use ONIXParser\Model\Tax;
+use ONIXParser\Model\Territory;
 use ONIXParser\Model\Title;
 use ONIXParser\Logger;
 use ONIXParser\FieldMappings;
@@ -1196,6 +1198,11 @@ class OnixParser
         // Get supply details
         $supplyDetailNodes = $this->queryNodesWithContext($this->fieldMappings['supply']['supply_details'], $productNode, $localXpath);
         $supplyMap = $this->fieldMappings['supply'];
+
+        // Market territories of the ProductSupply (where the product is on sale)
+        foreach ($this->queryNodesWithContext($supplyMap['market_territories'], $productNode, $localXpath) as $marketTerritory) {
+            $product->addMarketTerritory($this->parseTerritory($marketTerritory, $localXpath));
+        }
         
         foreach ($supplyDetailNodes as $supplyNode) {
             // Full model: one SupplyDetail object per <SupplyDetail>, nothing merged
@@ -1317,7 +1324,53 @@ class OnixParser
             $price->setCurrency($currency);
         }
 
+        // Full model: qualifier, status, dates, territory, all taxes, discount codes, unpriced type
+        $price->setPriceQualifier($this->getNodeValueWithContext($map['price_qualifier'], $priceNode, $localXpath));
+        $price->setPriceStatus($this->getNodeValueWithContext($map['price_status'], $priceNode, $localXpath));
+        $price->setUnpricedItemType($this->getNodeValueWithContext($map['unpriced_item_type'], $priceNode, $localXpath));
+
+        foreach ($this->readDateComposites($map['price_dates'], $map['price_date_role'], $priceNode, $localXpath) as $d) {
+            $price->addDate($d['role'], $d['format'], $d['date']);
+        }
+
+        $territoryNode = $this->queryNodeWithContext($map['territory'], $priceNode, $localXpath);
+        if ($territoryNode) {
+            $price->setTerritory($this->parseTerritory($territoryNode, $localXpath));
+        }
+
+        foreach ($this->queryNodesWithContext($map['taxes'], $priceNode, $localXpath) as $taxNode) {
+            $price->addTax(new Tax(
+                $this->getNodeValueWithContext($map['tax_type_of'], $taxNode, $localXpath),
+                $this->getNodeValueWithContext($map['tax_rate_code_of'], $taxNode, $localXpath),
+                $this->getNodeValueWithContext($map['tax_rate_percent_of'], $taxNode, $localXpath),
+                $this->getNodeValueWithContext($map['taxable_amount_of'], $taxNode, $localXpath),
+                $this->getNodeValueWithContext($map['tax_amount_of'], $taxNode, $localXpath)
+            ));
+        }
+
+        foreach ($this->queryNodesWithContext($map['discounts'], $priceNode, $localXpath) as $discountNode) {
+            $price->addDiscountCode(
+                $this->getNodeValueWithContext($map['discount_type'], $discountNode, $localXpath),
+                $this->getNodeValueWithContext($map['discount_type_name'], $discountNode, $localXpath),
+                $this->getNodeValueWithContext($map['discount_code'], $discountNode, $localXpath)
+            );
+        }
+
         return $price;
+    }
+
+    /**
+     * Parse a <Territory> composite.
+     */
+    private function parseTerritory(\DOMNode $territoryNode, ?\DOMXPath $localXpath = null): Territory
+    {
+        $map = $this->fieldMappings['pricing'];
+        return new Territory(
+            $this->getNodeValueWithContext($map['countries_included'], $territoryNode, $localXpath),
+            $this->getNodeValueWithContext($map['regions_included'], $territoryNode, $localXpath),
+            $this->getNodeValueWithContext($map['countries_excluded'], $territoryNode, $localXpath),
+            $this->getNodeValueWithContext($map['regions_excluded'], $territoryNode, $localXpath)
+        );
     }
 
     /**

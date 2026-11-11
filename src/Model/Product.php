@@ -130,6 +130,11 @@ class Product
     private $supplyDetails = [];
 
     /**
+     * @var Territory[] Market territories of the ProductSupply
+     */
+    private $marketTerritories = [];
+
+    /**
      * @var array<int,array{type:string,value:string,unit:?string}>|null Measures read by the parser (null = not parsed)
      */
     private $measures = null;
@@ -1110,6 +1115,22 @@ class Product
     public function addSupplyDetail(SupplyDetail $detail): self
     {
         $this->supplyDetails[] = $detail;
+        return $this;
+    }
+
+    /**
+     * Territories of the <Market> composites of the ProductSupply.
+     *
+     * @return Territory[]
+     */
+    public function getMarketTerritories(): array
+    {
+        return $this->marketTerritories;
+    }
+
+    public function addMarketTerritory(Territory $territory): self
+    {
+        $this->marketTerritories[] = $territory;
         return $this;
     }
 

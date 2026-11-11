@@ -288,4 +288,116 @@ class Price
         $priceTypeMap = CodeMaps::getPriceTypeMap();
         return isset($priceTypeMap[$this->type]) ? $priceTypeMap[$this->type] : null;
     }
+
+    /** @var Territory|null Where the price applies */
+    private $territory;
+
+    /** @var string|null PriceQualifier (list 59), e.g. 05 consumer price */
+    private $priceQualifier;
+
+    /** @var string|null PriceStatus (list 61) */
+    private $priceStatus;
+
+    /** @var array<int,array{role:?string,format:?string,date:?string}> every PriceDate */
+    private $dates = [];
+
+    /** @var Tax[] every <Tax> composite, in file order */
+    private $taxes = [];
+
+    /** @var array<int,array{type:?string,name:?string,code:?string}> every DiscountCoded */
+    private $discountCodes = [];
+
+    public function getTerritory(): ?Territory
+    {
+        return $this->territory;
+    }
+
+    public function setTerritory(?Territory $territory): self
+    {
+        $this->territory = $territory;
+        return $this;
+    }
+
+    public function getPriceQualifier(): ?string
+    {
+        return $this->priceQualifier;
+    }
+
+    public function setPriceQualifier(?string $qualifier): self
+    {
+        $this->priceQualifier = $qualifier;
+        return $this;
+    }
+
+    public function getPriceStatus(): ?string
+    {
+        return $this->priceStatus;
+    }
+
+    public function setPriceStatus(?string $status): self
+    {
+        $this->priceStatus = $status;
+        return $this;
+    }
+
+    /**
+     * Every PriceDate: role (list 173, 14 = valid from), date format (list 55) and the date as sent.
+     *
+     * @return array<int,array{role:?string,format:?string,date:?string}>
+     */
+    public function getDates(): array
+    {
+        return $this->dates;
+    }
+
+    public function addDate(?string $role, ?string $format, ?string $date): self
+    {
+        $this->dates[] = ['role' => $role, 'format' => $format, 'date' => $date];
+        return $this;
+    }
+
+    /**
+     * The date string of the first PriceDate with this role, or null.
+     */
+    public function getDate(string $role): ?string
+    {
+        foreach ($this->dates as $d) {
+            if ($d['role'] === $role) {
+                return $d['date'];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Every <Tax> composite (a price with two VAT rates has two).
+     *
+     * @return Tax[]
+     */
+    public function getTaxes(): array
+    {
+        return $this->taxes;
+    }
+
+    public function addTax(Tax $tax): self
+    {
+        $this->taxes[] = $tax;
+        return $this;
+    }
+
+    /**
+     * Every DiscountCoded: type (list 100), name (DiscountCodeTypeName) and code.
+     *
+     * @return array<int,array{type:?string,name:?string,code:?string}>
+     */
+    public function getDiscountCodes(): array
+    {
+        return $this->discountCodes;
+    }
+
+    public function addDiscountCode(?string $type, ?string $name, ?string $code): self
+    {
+        $this->discountCodes[] = ['type' => $type, 'name' => $name, 'code' => $code];
+        return $this;
+    }
 }

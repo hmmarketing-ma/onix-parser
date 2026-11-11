@@ -171,6 +171,8 @@ class FieldMappings
             // Supply chain info
             'supply' => [
                 'supply_details' => ['./onix:ProductSupply/onix:SupplyDetail', './ProductSupply/SupplyDetail'],
+                // Market composites of a ProductSupply (Market/Territory)
+                'market_territories' => ['./onix:ProductSupply/onix:Market/onix:Territory', './ProductSupply/Market/Territory'],
                 'supplier_name' => ['./onix:Supplier/onix:SupplierName', './Supplier/SupplierName'],
                 'supplier_role' => ['./onix:Supplier/onix:SupplierRole', './Supplier/SupplierRole'],
                 'gln' => ['./onix:Supplier/onix:SupplierIdentifier[onix:SupplierIDType="06"]/onix:IDValue', './Supplier/SupplierIdentifier[SupplierIDType="06"]/IDValue'],
@@ -214,6 +216,26 @@ class FieldMappings
                 'tax_rate_code' => ['./onix:Tax/onix:TaxRateCode', './Tax/TaxRateCode'],
                 'tax_rate_percent' => ['./onix:Tax/onix:TaxRatePercent', './Tax/TaxRatePercent'],
                 'unpriced_item_type' => ['./onix:UnpricedItemType', './UnpricedItemType'],
+                // Relative to a Price node
+                'price_qualifier' => ['./onix:PriceQualifier', './PriceQualifier'],
+                'price_status' => ['./onix:PriceStatus', './PriceStatus'],
+                'price_dates' => ['./onix:PriceDate', './PriceDate'],
+                'price_date_role' => ['./onix:PriceDateRole', './PriceDateRole'],
+                'taxes' => ['./onix:Tax', './Tax'],
+                'tax_type_of' => ['./onix:TaxType', './TaxType'],
+                'tax_rate_code_of' => ['./onix:TaxRateCode', './TaxRateCode'],
+                'tax_rate_percent_of' => ['./onix:TaxRatePercent', './TaxRatePercent'],
+                'taxable_amount_of' => ['./onix:TaxableAmount', './TaxableAmount'],
+                'tax_amount_of' => ['./onix:TaxAmount', './TaxAmount'],
+                'discounts' => ['./onix:DiscountCoded', './DiscountCoded'],
+                'discount_type' => ['./onix:DiscountCodeType', './DiscountCodeType'],
+                'discount_type_name' => ['./onix:DiscountCodeTypeName', './DiscountCodeTypeName'],
+                'discount_code' => ['./onix:DiscountCode', './DiscountCode'],
+                'territory' => ['./onix:Territory', './Territory'],
+                'countries_included' => ['./onix:CountriesIncluded', './CountriesIncluded'],
+                'regions_included' => ['./onix:RegionsIncluded', './RegionsIncluded'],
+                'countries_excluded' => ['./onix:CountriesExcluded', './CountriesExcluded'],
+                'regions_excluded' => ['./onix:RegionsExcluded', './RegionsExcluded'],
             ],
             
             // Images and resources
