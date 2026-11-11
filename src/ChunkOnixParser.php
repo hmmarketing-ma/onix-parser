@@ -14,6 +14,19 @@ use ONIXParser\Resume\FileCheckpointStore;
  */
 class ChunkOnixParser
 {
+    /**
+     * Callback return value: "I handled this record. Stop now. Resume AFTER it."
+     * The checkpoint offset is the first byte after this record and the count includes it.
+     */
+    public const STOP_AFTER = 'onix-parser:stop-after';
+
+    /**
+     * Callback return value: "I did NOT handle this record. Stop now. Resume AT it."
+     * The checkpoint offset is the first byte of this record and the count does not include it.
+     * Use this when the callback sees a time budget or a signal before it has done any work on the record.
+     */
+    public const STOP_BEFORE = 'onix-parser:stop-before';
+
     /** @var string */
     private $filePath;
     
@@ -124,7 +137,19 @@ class ChunkOnixParser
     }
 
     /**
-     * Parse ONIX file with chunk-based processing and automatic checkpoints
+     * Parse ONIX file with chunk-based processing and automatic checkpoints.
+     *
+     * CALLBACK CONTRACT: callback(Product $product, int $index): mixed
+     *   - Any normal return value (true, null, an array, 0 ...) means "handled, continue".
+     *   - ChunkOnixParser::STOP_AFTER  = handled, stop, resume after this record.
+     *   - ChunkOnixParser::STOP_BEFORE = NOT handled, stop, resume at this record.
+     *   - false is the old contract and means STOP_AFTER (kept so old callers behave as before).
+     *     A caller that returns false before it has handled the record loses that record. Use STOP_BEFORE.
+     *   - If the callback throws, the exception goes up. The record is not counted and the last checkpoint
+     *     stays; records after that checkpoint are delivered again on resume (at-least-once).
+     *
+     * Checkpoint offset rule: a checkpoint always points at a record boundary, so a resume never
+     * loses or repeats a record that the callback finished before the checkpoint was saved.
      */
     public function parseWithCheckpoints(callable $callback, int $checkpointInterval = 1000): array
     {
@@ -180,13 +205,23 @@ class ChunkOnixParser
                         // Convert XML to Product object using OnixParser  
                         $product = $this->parser->parseProductStreaming($this->nodeFromXml($productXml));
                         
+                        $recordStart = $currentPosition - strlen($buffer) + $startPos;
                         $result = call_user_func($callback, $product, $productCount);
                         $processedProducts[] = $result;
+
+                        // STOP_BEFORE: the callback did not handle this record. Offset = start of the record.
+                        if ($result === self::STOP_BEFORE) {
+                            $this->logger->info("Callback requested stop BEFORE record #$productCount (not handled)");
+                            $earlyTermination = true;
+                            $finalPosition = $recordStart;
+                            break 2; // Break both loops
+                        }
+
                         $productCount++;
                         
-                        // Check if callback wants to stop processing
-                        if ($result === false) {
-                            $this->logger->info("Callback requested early termination at product #$productCount");
+                        // STOP_AFTER (or the old 'false'): the record is handled. Offset = first byte after it.
+                        if ($result === self::STOP_AFTER || $result === false) {
+                            $this->logger->info("Callback requested stop AFTER record #$productCount (handled)");
                             $earlyTermination = true;
                             $finalPosition = $currentPosition - strlen($buffer) + $endPos + 1;
                             break 2; // Break both loops
