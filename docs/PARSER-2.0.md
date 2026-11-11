@@ -37,3 +37,19 @@ A checkpoint always points to a record boundary.
   A mismatch raises `CheckpointException` (the file is not the one the checkpoint was made for).
 * `getCheckpointInfo()` returns `['position', 'count', 'file_size', 'file_mtime', 'caller_hash', 'timestamp', ...]`
   or `null` when there is no checkpoint.
+
+## 3. Buffer and big records
+
+* The scanner (`ChunkOnixParser::iterateRecords`, private) keeps at most one unfinished record plus one chunk
+  in memory. It no longer trims by guessing: bytes are never cut.
+* A record bigger than the chunk size is read over several chunks. Growth stops at `setMaxRecordSize($bytes)`
+  (default 32 MB; real DILICOM records are about 15 KB). Over that, `Exception\RecordTooLargeException` is thrown.
+  `getByteOffset()` is the offset of that record's `<Product`.
+* A file that ends inside a record throws `Exception\TruncatedFileException` (with the offset). It used to end
+  quietly and drop the last record.
+* `parseWithCheckpoints()` does not collect callback results any more. It returns a summary:
+  `['processed' => n handled in this call, 'count' => total handled, 'position' => checkpoint offset
+  (file size when finished), 'stopped' => 'after'|'before'|null, 'completed' => bool]`.
+  (1.x returned the list of callback results: that list is gone, it grew with the file.)
+* Tag scan: `<Product` must be followed by `>`, space, tab, CR or LF. Prefixed tags (`<onix:Product>`) and
+  short tags (`<product>`) are **not** supported. The closing tag must be `</Product>` (case sensitive).

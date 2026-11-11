@@ -3,6 +3,8 @@
 namespace ONIXParser;
 
 use ONIXParser\Exception\CheckpointException;
+use ONIXParser\Exception\RecordTooLargeException;
+use ONIXParser\Exception\TruncatedFileException;
 use ONIXParser\Resume\CheckpointStore;
 use ONIXParser\Resume\FileCheckpointStore;
 
@@ -44,6 +46,9 @@ class ChunkOnixParser
     
     /** @var int */
     private $chunkSize = 512 * 1024; // 512KB chunks
+
+    /** @var int Hard cap for ONE record (bytes). Real DILICOM records are about 15 KB. */
+    private $maxRecordBytes = 32 * 1024 * 1024;
     
     /** @var resource */
     private $fileHandle;
@@ -156,10 +161,11 @@ class ChunkOnixParser
         $this->logger->info("Starting chunk-based ONIX parsing: " . basename($this->filePath));
         $this->logger->info("File size: " . number_format($this->fileSize) . " bytes, Chunk size: " . number_format($this->chunkSize) . " bytes");
         
-        // Load checkpoint
+        // Load checkpoint (throws CheckpointException if it is damaged or not for this file)
         $checkpoint = $this->loadCheckpoint();
         $startPosition = $checkpoint['position'] ?? 0;
         $productCount = $checkpoint['count'] ?? 0;
+        $countAtStart = $productCount;
         
         $this->logger->info("Resume from position: " . number_format($startPosition) . " bytes, product: $productCount");
         
@@ -170,137 +176,171 @@ class ChunkOnixParser
         
         fseek($this->fileHandle, $startPosition);
         
-        $buffer = '';
-        $processedProducts = [];
         $startTime = microtime(true);
-        $earlyTermination = false; // Track if callback requested early stop
-        $finalPosition = 0; // Track final position before file close
-        $lastFilePosition = 0; // Track file position during parsing
+        $stopped = null;        // 'after' | 'before' | null
+        $finalPosition = 0;     // offset to save when the callback asked to stop
+        $lastSavedPosition = $startPosition;
         
         try {
-            while (!feof($this->fileHandle)) {
-                $chunk = fread($this->fileHandle, $this->chunkSize);
-                if ($chunk === false) {
-                    break;
-                }
-                
-                $buffer .= $chunk;
-                $currentPosition = ftell($this->fileHandle);
-                $lastFilePosition = $currentPosition; // Track the last known position
-                
-                // Process complete products in buffer
-                $lastEndPos = 0;
-                while (($startPos = $this->findNextProductTag($buffer, $lastEndPos)) !== false) {
-                    // Find matching closing tag
-                    $endPos = $this->findClosingProductTag($buffer, $startPos);
+            // The callback results are NOT collected: memory stays flat whatever the file size.
+            foreach ($this->iterateRecords($this->fileHandle) as $record) {
+                try {
+                    // Convert XML to Product object using OnixParser
+                    $product = $this->parser->parseProductStreaming($this->nodeFromXml($record['xml']));
                     
-                    if ($endPos === false) {
-                        // Incomplete product, need more data
+                    $result = call_user_func($callback, $product, $productCount);
+                    
+                    // STOP_BEFORE: the callback did not handle this record. Offset = start of the record.
+                    if ($result === self::STOP_BEFORE) {
+                        $this->logger->info("Callback requested stop BEFORE record #$productCount (not handled)");
+                        $stopped = 'before';
+                        $finalPosition = $record['start'];
                         break;
                     }
                     
-                    $productXml = substr($buffer, $startPos, $endPos - $startPos + 1); // +1 to include the '>' character
+                    $productCount++;
                     
-                    try {
-                        // Convert XML to Product object using OnixParser  
-                        $product = $this->parser->parseProductStreaming($this->nodeFromXml($productXml));
-                        
-                        $recordStart = $currentPosition - strlen($buffer) + $startPos;
-                        $result = call_user_func($callback, $product, $productCount);
-                        $processedProducts[] = $result;
-
-                        // STOP_BEFORE: the callback did not handle this record. Offset = start of the record.
-                        if ($result === self::STOP_BEFORE) {
-                            $this->logger->info("Callback requested stop BEFORE record #$productCount (not handled)");
-                            $earlyTermination = true;
-                            $finalPosition = $recordStart;
-                            break 2; // Break both loops
-                        }
-
-                        $productCount++;
-                        
-                        // STOP_AFTER (or the old 'false'): the record is handled. Offset = first byte after it.
-                        if ($result === self::STOP_AFTER || $result === false) {
-                            $this->logger->info("Callback requested stop AFTER record #$productCount (handled)");
-                            $earlyTermination = true;
-                            $finalPosition = $currentPosition - strlen($buffer) + $endPos + 1;
-                            break 2; // Break both loops
-                        }
-                        
-                        // Save checkpoint
-                        if ($productCount % $checkpointInterval === 0) {
-                            $checkpointPos = $currentPosition - strlen($buffer) + $endPos + 1;
-                            $this->saveCheckpoint($checkpointPos, $productCount);
-                            
-                            $elapsed = round(microtime(true) - $startTime, 2);
-                            $progress = round(($checkpointPos / $this->fileSize) * 100, 2);
-                            $rate = $elapsed > 0 ? round($productCount / $elapsed) : $productCount;
-                            
-                            $this->logger->info("Checkpoint saved at product {$productCount} - Progress: {$progress}% ({$rate} products/sec)");
-                        }
-                        
-                        if ($productCount % 500 === 0) {
-                            $memoryMB = round(memory_get_usage() / 1024 / 1024, 2);
-                            $this->logger->debug("Processed $productCount products - Memory: {$memoryMB}MB");
-                        }
-                        
-                    } catch (\Exception $e) {
-                        $this->logger->error("Error processing product #$productCount at buffer position $startPos-$endPos: " . $e->getMessage());
-                        $this->logger->debug("Problematic XML fragment: " . substr($productXml, 0, 200) . "...");
-                        throw $e;
+                    // STOP_AFTER (or the old 'false'): the record is handled. Offset = first byte after it.
+                    if ($result === self::STOP_AFTER || $result === false) {
+                        $this->logger->info("Callback requested stop AFTER record #$productCount (handled)");
+                        $stopped = 'after';
+                        $finalPosition = $record['end'];
+                        break;
                     }
                     
-                    $lastEndPos = $endPos + 1; // TESTING: Changed from +10 to +1 to avoid skipping products
-                }
-                
-                // Keep unprocessed part of buffer
-                if ($lastEndPos > 0) {
-                    $buffer = substr($buffer, $lastEndPos);
-                }
-                
-                // Prevent buffer from growing too large - but preserve potential Product boundaries
-                if (strlen($buffer) > $this->chunkSize * 3) {
-                    // Instead of aggressive truncation, find a safe cut point after a complete Product
-                    $safeEndPos = $this->findLastCompleteProductEnd($buffer, $this->chunkSize);
-                    if ($safeEndPos > 0) {
-                        $buffer = substr($buffer, $safeEndPos);
-                        $this->logger->debug("Buffer trimmed safely at position $safeEndPos to prevent memory issues");
-                    } else {
-                        // Fallback: keep more buffer if we can't find a safe cut point
-                        $keepSize = $this->chunkSize * 2;
-                        $buffer = substr($buffer, -$keepSize);
-                        $this->logger->warning("Used fallback buffer trimming - may affect parsing");
+                    // Save checkpoint
+                    if ($productCount % $checkpointInterval === 0) {
+                        $this->saveCheckpoint($record['end'], $productCount);
+                        $lastSavedPosition = $record['end'];
+                        
+                        $elapsed = round(microtime(true) - $startTime, 2);
+                        $progress = round(($record['end'] / $this->fileSize) * 100, 2);
+                        $rate = $elapsed > 0 ? round(($productCount - $countAtStart) / $elapsed) : 0;
+                        
+                        $this->logger->info("Checkpoint saved at product {$productCount} - Progress: {$progress}% ({$rate} products/sec)");
                     }
+                    
+                    if ($productCount % 500 === 0) {
+                        $memoryMB = round(memory_get_usage() / 1024 / 1024, 2);
+                        $this->logger->debug("Processed $productCount products - Memory: {$memoryMB}MB");
+                    }
+                    
+                } catch (\Exception $e) {
+                    $this->logger->error("Error processing product #$productCount at byte {$record['start']}: " . $e->getMessage());
+                    $this->logger->debug("Problematic XML fragment: " . substr($record['xml'], 0, 200) . "...");
+                    throw $e;
                 }
             }
             
+            $endPosition = ftell($this->fileHandle);
         } finally {
             fclose($this->fileHandle);
         }
         
-        // Only clear checkpoint if we reached EOF naturally (no early termination)
-        if (!$earlyTermination && $this->checkpointStore->load() !== null) {
-            $this->logger->info("File parsing completed naturally - reached position " . number_format($lastFilePosition) . " of " . number_format($this->fileSize) . " bytes");
-            
-            // Additional safety check: verify we actually reached the end
-            if ($lastFilePosition >= $this->fileSize) {
-                $this->logger->info("Confirmed EOF reached - clearing checkpoint");
-                $this->checkpointStore->clear();
-            } else {
-                $this->logger->warning("Parsing stopped but EOF not reached - preserving checkpoint for investigation");
-                $this->saveCheckpoint($lastFilePosition, $productCount);
-            }
-        } elseif ($earlyTermination && $finalPosition > 0) {
+        if ($stopped === null) {
+            // The scanner ran to the end of the file and found no unfinished record: the file is done.
+            $this->logger->info("File parsing completed - clearing checkpoint (byte " . number_format((int)$endPosition) . " of " . number_format($this->fileSize) . ")");
+            $this->checkpointStore->clear();
+            $finalPosition = $this->fileSize;
+        } else {
             // Save final checkpoint for continuation
             $this->saveCheckpoint($finalPosition, $productCount);
-            $this->logger->info("Early termination - checkpoint preserved for continuation at position: " . number_format($finalPosition));
+            $this->logger->info("Stop requested ($stopped) - checkpoint saved at position: " . number_format($finalPosition));
         }
         
         $totalTime = round(microtime(true) - $startTime, 2);
-        $avgRate = $totalTime > 0 ? round($productCount / $totalTime) : $productCount;
-        $this->logger->info("Chunk parsing completed: $productCount products in {$totalTime}s (avg: {$avgRate} products/sec)");
+        $handled = $productCount - $countAtStart;
+        $avgRate = $totalTime > 0 ? round($handled / $totalTime) : $handled;
+        $this->logger->info("Chunk parsing completed: $handled products in {$totalTime}s (avg: {$avgRate} products/sec)");
         
-        return $processedProducts;
+        return [
+            'processed' => $handled,        // records handled in THIS call
+            'count' => $productCount,       // records handled in total (all sessions)
+            'position' => $finalPosition,   // byte offset of the checkpoint (file size when finished)
+            'stopped' => $stopped,          // 'after', 'before' or null
+            'completed' => $stopped === null,
+        ];
+    }
+
+    /**
+     * Walk through the file record by record, from the current position of $handle.
+     *
+     * Yields ['start' => byte offset of '<Product', 'end' => byte offset after '</Product>', 'xml' => string|null].
+     * The buffer holds at most one unfinished record plus one chunk. It grows only while a record
+     * is incomplete, up to maxRecordBytes, and then RecordTooLargeException is thrown (the bytes are
+     * never cut). A file that ends inside a record throws TruncatedFileException.
+     *
+     * @param resource $handle
+     */
+    private function iterateRecords($handle, bool $withXml = true): \Generator
+    {
+        $buffer = '';
+        $bufferStart = (int)ftell($handle); // file offset of $buffer[0]
+        $resumeClose = 0;                   // where the closing tag search continues for a record at buffer[0]
+        
+        while (!feof($handle)) {
+            $chunk = fread($handle, $this->chunkSize);
+            if ($chunk === false) {
+                break;
+            }
+            $buffer .= $chunk;
+            
+            $pos = 0;
+            $open = null;
+            while (($start = $this->findNextProductTag($buffer, $pos)) !== false) {
+                $from = ($start === 0 && $resumeClose > 0) ? $resumeClose : $start;
+                $end = $this->findClosingProductTag($buffer, $start, $from);
+                if ($end === false) {
+                    $open = $start; // unfinished record, wait for more data
+                    break;
+                }
+                
+                $pos = $end + 1;
+                $resumeClose = 0;
+                yield [
+                    'start' => $bufferStart + $start,
+                    'end' => $bufferStart + $end + 1,
+                    'xml' => $withXml ? substr($buffer, $start, $end - $start + 1) : null,
+                ];
+            }
+            
+            // Throw away what was consumed. Keep only the unfinished record, or the last bytes that
+            // may be the start of a '<Product' tag cut by the chunk border.
+            $cut = $open !== null ? $open : max($pos, strlen($buffer) - 9);
+            if ($cut > 0) {
+                $buffer = substr($buffer, $cut);
+                $bufferStart += $cut;
+            }
+            
+            if ($open !== null) {
+                $resumeClose = max(0, strlen($buffer) - 10);
+                if (strlen($buffer) > $this->maxRecordBytes) {
+                    throw new RecordTooLargeException($bufferStart, strlen($buffer), $this->maxRecordBytes);
+                }
+            } else {
+                $resumeClose = 0;
+            }
+        }
+        
+        // End of file. Anything left that starts a <Product> is a cut record.
+        $tail = $this->findNextProductTag($buffer, 0);
+        if ($tail !== false) {
+            throw new TruncatedFileException($bufferStart + $tail);
+        }
+    }
+
+    /**
+     * Hard cap for ONE <Product> record in bytes (default 32 MB, real records are about 15 KB).
+     * The parser grows its buffer up to this size for a big record, then throws RecordTooLargeException.
+     */
+    public function setMaxRecordSize(int $bytes): void
+    {
+        $this->maxRecordBytes = max(1024, $bytes);
+    }
+
+    public function getMaxRecordSize(): int
+    {
+        return $this->maxRecordBytes;
     }
     
     /**
@@ -393,6 +433,9 @@ class ChunkOnixParser
                 // Keep unprocessed part of buffer
                 if ($lastEndPos > 0) {
                     $buffer = substr($buffer, $lastEndPos);
+                }
+                if (strlen($buffer) > $this->maxRecordBytes) {
+                    throw new RecordTooLargeException($currentPosition - strlen($buffer), strlen($buffer), $this->maxRecordBytes);
                 }
             }
             
@@ -508,6 +551,9 @@ class ChunkOnixParser
                 if ($lastEndPos > 0) {
                     $buffer = substr($buffer, $lastEndPos);
                 }
+                if (strlen($buffer) > $this->maxRecordBytes) {
+                    throw new RecordTooLargeException($currentPosition - strlen($buffer), strlen($buffer), $this->maxRecordBytes);
+                }
             }
             
         } finally {
@@ -555,25 +601,9 @@ class ChunkOnixParser
     }
     
     /**
-     * Find the last complete Product end position for safe buffer trimming
-     */
-    private function findLastCompleteProductEnd(string $buffer, int $maxKeepSize): int
-    {
-        $searchStart = max(0, strlen($buffer) - $maxKeepSize);
-        $lastProductEnd = 0;
-        
-        // Look for complete </Product> tags in the trim candidate area
-        $pos = $searchStart;
-        while (($closePos = strpos($buffer, '</Product>', $pos)) !== false) {
-            $lastProductEnd = $closePos + 10; // +10 for '</Product>'
-            $pos = $closePos + 1;
-        }
-        
-        return $lastProductEnd;
-    }
-    
-    /**
-     * Find the next exact <Product> tag (not ProductIdentifier, ProductComposition, etc.)
+     * Find the next exact <Product> start tag (not ProductIdentifier, ProductSupply, ...).
+     * The tag must be followed by '>', space, tab, CR or LF. Prefixed (<onix:Product>) and
+     * short (<product>) tags are NOT supported.
      */
     private function findNextProductTag(string $buffer, int $startPos): int|false
     {
@@ -586,11 +616,10 @@ class ChunkOnixParser
                 return false;
             }
             
-            // Check if this is an exact Product tag
             $afterProduct = $productPos + 8; // strlen('<Product')
             if ($afterProduct < $len) {
                 $nextChar = $buffer[$afterProduct];
-                if ($nextChar === '>' || $nextChar === ' ' || $nextChar === "\t" || $nextChar === "\n") {
+                if ($nextChar === '>' || $nextChar === ' ' || $nextChar === "\t" || $nextChar === "\n" || $nextChar === "\r") {
                     return $productPos;
                 }
             }
@@ -602,47 +631,33 @@ class ChunkOnixParser
     }
     
     /**
-     * Find the closing </Product> tag matching the opening tag
+     * Find the closing </Product> tag of the record that starts at $startPos.
+     * Returns the position of the '>' of the closing tag, or false if the record is not complete yet.
+     * $searchFrom lets the caller skip bytes it has already scanned for this record.
+     * Product elements do not nest in ONIX, so the first '</Product>' ends the record.
      */
-    private function findClosingProductTag(string $buffer, int $startPos): int|false
+    private function findClosingProductTag(string $buffer, int $startPos, ?int $searchFrom = null): int|false
     {
-        $depth = 0;
-        $pos = $startPos;
+        $pos = max($startPos, $searchFrom ?? $startPos);
         $len = strlen($buffer);
         
-        // Handle both <Product> and namespaced <x:Product> tags
-        $inTag = false;
-        $tagContent = '';
-        
-        while ($pos < $len) {
-            $char = $buffer[$pos];
-            
-            if ($char === '<') {
-                $inTag = true;
-                $tagContent = '<';
-            } elseif ($char === '>' && $inTag) {
-                $tagContent .= '>';
-                $inTag = false;
-                
-                // Check if this is a Product tag (exact match, not ProductIdentifier etc.)
-                if (preg_match('/^<(\w*:)?Product(\s|>)/i', $tagContent)) {
-                    $depth++;
-                } elseif (preg_match('/^<\/(\w*:)?Product>$/i', $tagContent)) {
-                    $depth--;
-                    if ($depth === 0) {
-                        return $pos; // Return position of '>' in </Product>
-                    }
-                }
-                
-                $tagContent = '';
-            } elseif ($inTag) {
-                $tagContent .= $char;
+        while (($close = strpos($buffer, '</Product', $pos)) !== false) {
+            $after = $close + 9; // strlen('</Product')
+            if ($after >= $len) {
+                return false; // cut by the end of the buffer
             }
-            
-            $pos++;
+            $c = $buffer[$after];
+            if ($c === '>') {
+                return $after;
+            }
+            if ($c === ' ' || $c === "\t" || $c === "\n" || $c === "\r") {
+                $gt = strpos($buffer, '>', $after);
+                return $gt === false ? false : $gt;
+            }
+            $pos = $close + 1; // '</ProductSupply>' and the like
         }
         
-        return false; // No complete closing tag found
+        return false;
     }
     
     /**
@@ -658,41 +673,9 @@ class ChunkOnixParser
         }
         
         $productCount = 0;
-        $buffer = '';
-        $overlap = 1024; // Keep 1KB overlap to avoid missing products at chunk boundaries
-        
         try {
-            while (!feof($handle)) {
-                $chunk = fread($handle, $this->chunkSize);
-                if ($chunk === false) {
-                    break;
-                }
-                
-                $buffer .= $chunk;
-                
-                // Process complete products in buffer using same logic as parsing
-                $lastEndPos = 0;
-                while (($startPos = $this->findNextProductTag($buffer, $lastEndPos)) !== false) {
-                    $endPos = $this->findClosingProductTag($buffer, $startPos);
-                    
-                    if ($endPos === false) {
-                        // Incomplete product, need more data
-                        break;
-                    }
-                    
-                    $productCount++;
-                    $lastEndPos = $endPos + 1;
-                }
-                
-                // Keep unprocessed part of buffer with overlap to avoid missing products
-                if ($lastEndPos > 0) {
-                    $buffer = substr($buffer, $lastEndPos);
-                } else {
-                    // No complete products found, keep overlap
-                    if (strlen($buffer) > $overlap) {
-                        $buffer = substr($buffer, -$overlap);
-                    }
-                }
+            foreach ($this->iterateRecords($handle, false) as $record) {
+                $productCount++;
             }
         } finally {
             fclose($handle);
