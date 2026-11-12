@@ -59,18 +59,24 @@ class FieldMappings
             
             // Identifiers
             'identifiers' => [
+                // Direct children of <Product> only (a ProductIdentifier inside RelatedMaterial is another product)
                 'isbn' => [
-                    ".//onix:ProductIdentifier[onix:ProductIDType='15']/onix:IDValue", 
-                    ".//ProductIdentifier[ProductIDType='15']/IDValue"
+                    "./onix:ProductIdentifier[onix:ProductIDType='15']/onix:IDValue",
+                    "./ProductIdentifier[ProductIDType='15']/IDValue"
                 ],
                 'ean' => [
-                    ".//onix:ProductIdentifier[onix:ProductIDType='03']/onix:IDValue", 
-                    ".//ProductIdentifier[ProductIDType='03']/IDValue"
+                    "./onix:ProductIdentifier[onix:ProductIDType='03']/onix:IDValue",
+                    "./ProductIdentifier[ProductIDType='03']/IDValue"
                 ],
                 'gln' => [
                     './onix:ProductSupply/onix:SupplyDetail/onix:Supplier/onix:SupplierIdentifier[onix:SupplierIDType="06"]/onix:IDValue', 
                     './ProductSupply/SupplyDetail/Supplier/SupplierIdentifier[SupplierIDType="06"]/IDValue'
                 ],
+            ],
+            'product_identifiers' => [
+                'nodes' => ['./onix:ProductIdentifier', './ProductIdentifier'],
+                'type' => ['./onix:ProductIDType', './ProductIDType'],
+                'value' => ['./onix:IDValue', './IDValue'],
             ],
             
             // Title information

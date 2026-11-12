@@ -5,6 +5,19 @@ All notable changes to the ONIX Parser library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-11-12
+
+### Added
+- `Product::getHeadXml()`: XML between the `<Product>` start tag and the first block element (whitespace included),
+  same string in full and blocks-only mode.
+- `Product::getProductIdentifiers()`: every direct `ProductIdentifier` child as `['type', 'value']` (a second 03 too).
+
+### Fixed (behaviour change)
+- `getEan()` / `getIsbn()` read direct children of `<Product>` only. Before, a descendant XPath could pick a
+  `ProductIdentifier` of a related product inside `RelatedMaterial` and give the wrong key without any warning.
+  Records with a top-level 03/15 are unchanged (initial file: EAN on 27,383 of 27,383, same as before).
+  With several direct 03, `getEan()` still returns the first.
+
 ## [2.0.1] - 2026-11-12
 
 ### Fixed

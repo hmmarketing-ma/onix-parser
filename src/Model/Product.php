@@ -145,6 +145,16 @@ class Product
     private $presentBlocks = null;
 
     /**
+     * @var array<int,array{type:?string,value:?string}> Direct ProductIdentifier children of <Product>
+     */
+    private $productIdentifiers = [];
+
+    /**
+     * @var string|null XML between the <Product> start tag and the first block element
+     */
+    private $headXml = null;
+
+    /**
      * @var string|null Imprint GLN (ImprintIDType 06)
      */
     private $imprintGln = null;
@@ -1145,6 +1155,39 @@ class Product
     public function addSupplyDetail(SupplyDetail $detail): self
     {
         $this->supplyDetails[] = $detail;
+        return $this;
+    }
+
+    /**
+     * Every ProductIdentifier that is a direct child of <Product>, as sent: list of ['type', 'value'].
+     * Identifiers inside RelatedMaterial (other products) are not included. Two 03 are both returned.
+     *
+     * @return array<int,array{type:?string,value:?string}>
+     */
+    public function getProductIdentifiers(): array
+    {
+        return $this->productIdentifiers;
+    }
+
+    public function addProductIdentifier(?string $type, ?string $value): self
+    {
+        $this->productIdentifiers[] = ['type' => $type, 'value' => $value];
+        return $this;
+    }
+
+    /**
+     * The XML between the <Product> start tag and the first block element (RecordReference,
+     * NotificationType, ProductIdentifier, Barcode ...), whitespace included. Identical in full and
+     * blocks-only mode. Null for a Product that was not made by the parser.
+     */
+    public function getHeadXml(): ?string
+    {
+        return $this->headXml;
+    }
+
+    public function setHeadXml(?string $xml): self
+    {
+        $this->headXml = $xml;
         return $this;
     }
 

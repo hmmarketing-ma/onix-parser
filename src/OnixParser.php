@@ -799,6 +799,15 @@ class OnixParser
      */
     private function parseIdentifiers(\DOMNode $productNode, Product $product, ?\DOMXPath $localXpath = null): void
     {
+        // Every direct ProductIdentifier, as sent
+        $idMap = $this->fieldMappings['product_identifiers'];
+        foreach ($this->queryNodesWithContext($idMap['nodes'], $productNode, $localXpath) as $idNode) {
+            $product->addProductIdentifier(
+                $this->getNodeValueWithContext($idMap['type'], $idNode, $localXpath),
+                $this->getNodeValueWithContext($idMap['value'], $idNode, $localXpath)
+            );
+        }
+
         foreach ($this->fieldMappings['identifiers'] as $key => $xpath) {
             $value = $this->getNodeValueWithContext($xpath, $productNode, $localXpath);
             if ($value) {
@@ -1271,12 +1280,21 @@ class OnixParser
     private function parsePresentBlocks(\DOMNode $productNode, Product $product): void
     {
         $found = [];
+        $head = '';
+        $inHead = true;
         foreach ($productNode->childNodes as $child) {
             if ($child->nodeType === XML_ELEMENT_NODE && in_array($child->localName, Product::BLOCKS, true)) {
                 $found[] = $child->localName;
+                $inHead = false;
+            }
+            if ($inHead) {
+                $head .= $child->ownerDocument->saveXML($child);
             }
         }
         $product->setPresentBlocks($found);
+        // Head = everything between the <Product> start tag and the first block (RecordReference, NotificationType,
+        // ProductIdentifier..., Barcode ...), whitespace included. Same string in full and blocks-only mode.
+        $product->setHeadXml($head);
     }
 
     /**
