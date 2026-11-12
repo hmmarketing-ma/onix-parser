@@ -47,6 +47,9 @@ class ChunkOnixParser
     /** @var int */
     private $chunkSize = 512 * 1024; // 512KB chunks
 
+    /** @var bool Blocks-only parsing (see OnixParser::parseProductBlocks) */
+    private $blocksOnly = false;
+
     /** @var int Hard cap for ONE record (bytes). Real DILICOM records are about 15 KB. */
     private $maxRecordBytes = 32 * 1024 * 1024;
     
@@ -190,7 +193,7 @@ class ChunkOnixParser
             foreach ($this->iterateRecords($this->fileHandle) as $record) {
                 try {
                     // Convert XML to Product object using OnixParser
-                    $product = $this->parser->parseProductStreaming($this->nodeFromXml($record['xml']));
+                    $product = $this->parseRecord($record['xml']);
                     
                     $result = call_user_func($callback, $product, $productCount);
                     
@@ -340,6 +343,21 @@ class ChunkOnixParser
     public function setMaxRecordSize(int $bytes): void
     {
         $this->maxRecordBytes = max(1024, $bytes);
+    }
+
+    /**
+     * Blocks-only mode: much cheaper per record. Product has ids, notification type, present blocks,
+     * block XML and per-SupplyDetail GLN/name/availability only. See OnixParser::parseProductBlocks().
+     */
+    public function setBlocksOnly(bool $on): void
+    {
+        $this->blocksOnly = $on;
+    }
+
+    private function parseRecord(string $xml): Model\Product
+    {
+        $node = $this->nodeFromXml($xml);
+        return $this->blocksOnly ? $this->parser->parseProductBlocks($node) : $this->parser->parseProductStreaming($node);
     }
 
     public function getMaxRecordSize(): int

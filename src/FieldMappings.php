@@ -197,6 +197,8 @@ class FieldMappings
             'supply' => [
                 'supply_details' => ['./onix:ProductSupply/onix:SupplyDetail', './ProductSupply/SupplyDetail'],
                 // Market composites of a ProductSupply (Market/Territory)
+                // Relative to a ProductSupply node
+                'market_territory_in_supply' => ['./onix:Market/onix:Territory', './Market/Territory'],
                 'market_territories' => ['./onix:ProductSupply/onix:Market/onix:Territory', './ProductSupply/Market/Territory'],
                 'supplier_name' => ['./onix:Supplier/onix:SupplierName', './Supplier/SupplierName'],
                 'supplier_role' => ['./onix:Supplier/onix:SupplierRole', './Supplier/SupplierRole'],

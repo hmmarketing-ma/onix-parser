@@ -448,7 +448,7 @@ class OnixParser
         $product = new Product();
         
         // Create a new DOM document and import the product node
-        $dom = new \DOMDocument();
+        $dom = new \DOMDocument('1.0', 'UTF-8');
         $importedNode = $dom->importNode($productNode, true);
         $dom->appendChild($importedNode);
         
@@ -525,8 +525,63 @@ class OnixParser
             $productXml->registerXPathNamespace('onix', $fragmentNamespaceURI);
         }
         
+        // Serialize as UTF-8 (without this the root is written with numeric entities, e.g. &#xE9;)
+        $backing = dom_import_simplexml($productXml);
+        if ($backing) {
+            $backing->ownerDocument->encoding = 'UTF-8';
+        }
         $product->setXml($productXml);
         
+        return $product;
+    }
+
+    /**
+     * Blocks-only parse: the cheap path for a loader that stores the block XML itself.
+     *
+     * Fills: record reference, notification type, identifiers (EAN/ISBN), present blocks, the XML of every
+     * block (getBlockXml / getBlockElements) and, per SupplyDetail, supplier GLN/name/role/identifiers and
+     * availability. It does NOT build titles, contributors, subjects, descriptions, images, prices, measures,
+     * dates or the SimpleXML copy (so getXml() is null and the full-model getters are empty).
+     * Block XML is the same string the full mode returns.
+     *
+     * @param \DOMNode $productNode
+     * @return Product
+     */
+    public function parseProductBlocks(\DOMNode $productNode): Product
+    {
+        $product = new Product();
+        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $importedNode = $dom->importNode($productNode, true);
+        $dom->appendChild($importedNode);
+        $xpath = new \DOMXPath($dom);
+        $fragmentHasNamespace = !empty($importedNode->namespaceURI);
+        if ($this->hasNamespace || $fragmentHasNamespace) {
+            $xpath->registerNamespace('onix', $fragmentHasNamespace ? $importedNode->namespaceURI : $this->namespaceURI);
+        }
+
+        $product->setRecordReference($this->getNodeValueWithContext($this->fieldMappings['record_reference'], $importedNode, $xpath));
+        $this->parseNotification($importedNode, $product, $xpath);
+        $this->parseIdentifiers($importedNode, $product, $xpath);
+        $this->parsePresentBlocks($importedNode, $product);
+
+        $blocks = [];
+        foreach ($importedNode->childNodes as $child) {
+            if ($child->nodeType === XML_ELEMENT_NODE && in_array($child->localName, Product::BLOCKS, true)) {
+                $blocks[$child->localName][] = $dom->saveXML($child);
+            }
+        }
+        $product->setBlockElements($blocks);
+
+        $supplyMap = $this->fieldMappings['supply'];
+        foreach ($this->queryNodesWithContext($supplyMap['supply_details'], $importedNode, $xpath) as $supplyNode) {
+            $detail = new SupplyDetail();
+            $detail->setSupplierName($this->getNodeValueWithContext($supplyMap['supplier_name'], $supplyNode, $xpath) ?: null);
+            $detail->setSupplierRole($this->getNodeValueWithContext($supplyMap['supplier_role'], $supplyNode, $xpath) ?: null);
+            $detail->setSupplierGln($this->getNodeValueWithContext($supplyMap['gln'], $supplyNode, $xpath) ?: null);
+            $detail->setAvailability($this->getNodeValueWithContext($this->fieldMappings['stock']['availability'], $supplyNode, $xpath) ?: null);
+            $product->addSupplyDetail($detail);
+        }
+
         return $product;
     }
 
@@ -1343,6 +1398,13 @@ class OnixParser
                 // Legacy flat list: only prices that have an amount
                 if ($price->getAmount() !== null) {
                     $product->addPrice($price);
+                }
+            }
+
+            // The Market(s) of the ProductSupply this SupplyDetail sits in
+            if ($supplyNode->parentNode) {
+                foreach ($this->queryNodesWithContext($supplyMap['market_territory_in_supply'], $supplyNode->parentNode, $localXpath) as $mt) {
+                    $detail->addMarketTerritory($this->parseTerritory($mt, $localXpath));
                 }
             }
 

@@ -135,6 +135,11 @@ class Product
     public const BLOCKS = ['DescriptiveDetail', 'CollateralDetail', 'ContentDetail', 'PublishingDetail', 'RelatedMaterial', 'ProductSupply'];
 
     /**
+     * @var array<string,string[]>|null Block XML cut at parse time (blocks-only mode); null = read lazily from $xml
+     */
+    private $blockXml = null;
+
+    /**
      * @var string[]|null Blocks present in the record (null = not set by the parser)
      */
     private $presentBlocks = null;
@@ -1257,16 +1262,52 @@ class Product
     }
 
     /**
-     * Raw XML of one block (the element with all its children), or null when the block is absent.
-     * Only the six ONIX 3.0 block names are accepted.
+     * Raw XML of one block. Returns EVERY element of that name, in file order, joined with no separator.
+     * ProductSupply can appear several times in a record (DILICOM sends one per market: for example the
+     * first for FR/BE and a second for WORLD minus FR/BE, the one that covers Morocco), so a single
+     * element is not enough. With more than one element the string has several roots: wrap it
+     * (`<x>...</x>`) before loading it as a document, or use getBlockElements().
+     * Null when the block is absent. Only the six ONIX 3.0 block names are accepted.
      */
     public function getBlockXml(string $name): ?string
     {
-        if (!in_array($name, self::BLOCKS, true) || !$this->xml) {
-            return null;
+        $elements = $this->getBlockElements($name);
+        return $elements ? implode('', $elements) : null;
+    }
+
+    /**
+     * Raw XML of every element of one block, one string per element, in file order.
+     * Empty array when the block is absent (or the name is not a block).
+     *
+     * @return string[]
+     */
+    public function getBlockElements(string $name): array
+    {
+        if (!in_array($name, self::BLOCKS, true)) {
+            return [];
         }
-        $nodes = $this->xml->xpath("*[local-name()='" . $name . "']");
-        return $nodes ? $nodes[0]->asXML() : null;
+        if ($this->blockXml !== null) {
+            return $this->blockXml[$name] ?? [];
+        }
+        if (!$this->xml) {
+            return [];
+        }
+        $out = [];
+        foreach ($this->xml->xpath("*[local-name()='" . $name . "']") ?: [] as $node) {
+            $out[] = $node->asXML();
+        }
+        return $out;
+    }
+
+    /**
+     * Used by the parser in blocks-only mode: the block XML is cut out of the record at parse time.
+     *
+     * @param array<string,string[]> $blocks block name => list of element XML strings
+     */
+    public function setBlockElements(array $blocks): self
+    {
+        $this->blockXml = $blocks;
+        return $this;
     }
 
     /**

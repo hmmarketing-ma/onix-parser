@@ -5,6 +5,24 @@ All notable changes to the ONIX Parser library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-11-12
+
+### Fixed
+- **`Product::getBlockXml()` returned only the FIRST element of a repeated block.** `ProductSupply` repeats
+  (one per market: first FR/BE, second WORLD minus FR/BE = the one that covers Morocco). Real data: DIF451053808
+  has 4,057 of 79,000 records with 2 `ProductSupply`, DIF451048537 has 39. Now returns every element in file
+  order (several roots joined), `getBlockElements($name)` returns them one by one. `ProductSupply` is the only
+  block that repeats in ONIX 3.0; the same all-elements rule is applied to every block name.
+- `SupplyDetail::getMarketTerritories()`: each SupplyDetail is linked to the `Market` of its own `ProductSupply`.
+- `Product::getXml()` and the block XML are UTF-8 (the root was written with `&#xE9;`-style entities).
+
+### Added
+- `ChunkOnixParser::setBlocksOnly(true)` / `OnixParser::parseProductBlocks()`: ids, notification type, present
+  blocks, block XML and per-SupplyDetail GLN/name/availability only. Block strings are identical to the full mode
+  (SHA-256 equal on 27,383 and 2 x 79,000 real records). 27k file: 2,652 rec/s against 765 rec/s.
+
+Note: tag v2.0.0 was moved once before it was ever pushed; it is not moved again. This fix is v2.0.1.
+
 ## [2.0.0] - 2026-11-11
 
 DILICOM pipeline rebuild (STORY-879). Details: docs/PARSER-2.0.md.

@@ -64,7 +64,8 @@ A checkpoint always points to a record boundary.
 | `Territory` | `getCountriesIncluded()`, `getRegionsIncluded()`, `getCountriesExcluded()`, `getRegionsExcluded()`, `coversCountry($cc, $extraRegions = [])` | only `WORLD` is known; other regions need `$extraRegions` |
 | `Tax` | `getType()`, `getRateCode()`, `getRatePercent()`, `getRatePercentRaw()`, `getTaxableAmount()`, `getTaxAmount()` | a price can carry several |
 | `Product` | `getMarketTerritories()` | `ProductSupply/Market/Territory` |
-| `Product` | `getPresentBlocks()`, `hasBlock($name)`, `getBlockXml($name)` | names are the ONIX 3.0 element names, in message order |
+| `Product` | `getPresentBlocks()`, `hasBlock($name)`, `getBlockXml($name)`, `getBlockElements($name)` | names are the ONIX 3.0 element names, in message order. `ProductSupply` can occur several times (one per market): `getBlockXml()` joins ALL elements, `getBlockElements()` gives one string each |
+| `SupplyDetail` | `getMarketTerritories()` | the `Market` of the `ProductSupply` this SupplyDetail sits in |
 | `Product` | `getMeasures()`, `getExtents()`, `getHeightMm()`, `getWidthMm()`, `getThicknessMm()`, `getWeightGrams()`, `getPageCount()` | `getHeight()` etc. still return `['value', 'unit', 'unit_name', 'type']` |
 | `Product` | `getImprintGln()`, `getPublishingDates()` | |
 | `Product` | `getResourceVersions($contentType = null)`, `getFrontCoverNear($px = 400)` | |
@@ -80,3 +81,11 @@ Dates are arrays `['role', 'format', 'date']`; the date string is exactly as sen
 * Several `SupplyDetail`: the 1.x single-value getters (`getAvailabilityCode()`, `getSupplierGLN()`,
   `getSupplierName()`) still return the **last** one. Use `getSupplyDetails()` for multi-distribution.
 * The parser reads facts. It does not choose the Morocco price, the availability to show, or the cover to keep.
+
+## 5. Blocks-only mode (2.0.1)
+
+`ChunkOnixParser::setBlocksOnly(true)` (or `OnixParser::parseProductBlocks($node)`) builds a light Product:
+record reference, notification type, identifiers (EAN/ISBN), present blocks, the XML of every block
+(`getBlockXml`, `getBlockElements`, identical strings to the full mode) and, per SupplyDetail, GLN, name, role and
+availability. Everything else (title, contributors, prices, measures, dates, `getXml()`) is empty. About 3.5 times
+faster (2,652 against 765 records/s on the 27k file, 6 MB peak).

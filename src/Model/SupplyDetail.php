@@ -208,4 +208,24 @@ class SupplyDetail
         $this->prices[] = $price;
         return $this;
     }
+
+    /** @var Territory[] Market territories of the ProductSupply this SupplyDetail belongs to */
+    private $marketTerritories = [];
+
+    /**
+     * Territories of the <Market> composites in the same <ProductSupply> as this SupplyDetail.
+     * A record can have several ProductSupply (one per market); this links each SupplyDetail to its own.
+     *
+     * @return Territory[]
+     */
+    public function getMarketTerritories(): array
+    {
+        return $this->marketTerritories;
+    }
+
+    public function addMarketTerritory(Territory $territory): self
+    {
+        $this->marketTerritories[] = $territory;
+        return $this;
+    }
 }
